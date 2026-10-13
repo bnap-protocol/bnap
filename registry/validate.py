@@ -518,7 +518,7 @@ def check_vector(w, entry, kind, props, rep):
                     "(draft-00 section 11), not in properties")
             continue
         if kind not in p.applies_to:
-            rep.err(f"{w}.properties", f"{name!r} does not apply to a {kind} entry "
+            rep.err(f"{w}.properties", f"{name!r} does not apply to {kind} entries "
                     f"(applies to: {', '.join(p.applies_to)})")
             continue
         if value not in p.values:
@@ -528,7 +528,7 @@ def check_vector(w, entry, kind, props, rep):
         if p.location != "entry" or p.id not in entry:
             continue
         if kind not in p.applies_to:
-            rep.err(w, f"{p.id!r} does not apply to a {kind} entry")
+            rep.err(w, f"{p.id!r} does not apply to {kind} entries")
         elif entry[p.id] not in p.values:
             rep.err(f"{w}.{p.id}", f"unknown value {entry[p.id]!r}; one of "
                     + ", ".join(p.values) + " (weakest first)")
@@ -616,9 +616,11 @@ def check_entry(key, w, entry, props, verifier_ids, rail_kinds, rep):
 
 def effective(reg, props, scheme_id, rail_ids, verifier_id):
     """Per-property minimum over the scheme, its rails and its verifier
-    (draft-00 section 11). Only entries whose kind a property applies to take
-    part; an entry that should state a property but does not, or an unknown
-    entry, counts as that property's weakest value. Returns (vector, problems).
+    (draft-00 section 11). The vector has the properties that apply to the
+    scheme's kind; for each, only entries whose kind it applies to take part.
+    An entry that should state a property but does not, or an unknown entry,
+    counts as that property's weakest value. Several rails all take part: a
+    credential cannot show which one funded it. Returns (vector, problems).
     """
     problems = []
     scheme = reg["schemes"].get(scheme_id)
@@ -647,6 +649,10 @@ def effective(reg, props, scheme_id, rail_ids, verifier_id):
             parts.append(("verifier", ver.get("vector", {})))
     vec = {}
     for p in props.values():
+        # The scheme's kind fixes which properties the vector has: a
+        # verifier's custody, say, says nothing about an attestation.
+        if scheme["kind"] not in p.applies_to:
+            continue
         ranks = [p.rank(v.get(p.id)) for kind, v in parts if kind in p.applies_to]
         if ranks:
             vec[p.id] = p.values[min(ranks)]
