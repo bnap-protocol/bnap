@@ -3,8 +3,8 @@
 Branch `node/n13` of the `bnap` repository. Files this node owns:
 
 - `spec/schemes/bnap-notes-draft-00.md` (priority 1, done)
-- `ietf/` (priority 2)
-- `nuts/` and `docs/payment-method-cashu.md` (priority 3)
+- `ietf/` (priority 2, done; CI-ready, not built locally)
+- `nuts/` and `docs/payment-method-cashu.md` (priority 3, done)
 
 Nothing else in the repository was edited.
 
@@ -60,7 +60,39 @@ NUT-13 derivation for version-01 keysets with type `0x02` for the note key and `
 
 Section 18 lists what the notes vectors must contain. The socket vectors' notes body is a placeholder and is not a valid notes body under this draft; they need no change, because they test socket hashing only.
 
-## 2. Decisions made
+## 2. ietf/: draft-bnap-socket
+
+| File | What it is |
+| --- | --- |
+| `ietf/draft-bnap-socket.md` | kramdown-rfc source, `docname: draft-bnap-socket-latest`, generated; do not edit by hand |
+| `ietf/tools/from-draft00.py` | Generator: `cd ietf && python3 -I tools/from-draft00.py ../spec/socket-draft-00.md > draft-bnap-socket.md` |
+| `ietf/Makefile`, `.gitignore`, `.editorconfig`, `.github/workflows/{ghpages,publish,archive,update}.yml` | martinthomson/i-d-template files, current template versions (checkout@v6, cache@v5, upload-artifact@v6) |
+| `ietf/ci/bnap-monorepo.yml` | A workflow that builds the draft from inside the bnap repository |
+| `ietf/README.md`, `CONTRIBUTING.md`, `LICENSE.md` | Template-style docs: derivation, split-out plan, IETF contribution terms |
+
+How the derivation keeps the normative text: same section order, so draft-00's section numbers stay valid; sections 1, 12 and 13 renamed Introduction, Security Considerations, IANA Considerations; the BCP 14 sentence replaced by `{::boilerplate bcp14-tagged}`; non-ASCII symbols written as ASCII (`||`, `ceil()`, `floor()`, `_1`, `^64`); the twelve code blocks re-wrapped to at most 72 columns, each pinned by the first 8 hex digits of the SHA-256 of its draft-00 original, so a draft-00 change stops the generator instead of leaving a stale copy; "RFC NNNN" turned into citations and other documents cited at first mention; the 10.3 HTTP example folded as RFC 8792 describes. Added: abstract, a note to readers, a security paragraph, IANA templates (HTTP authentication scheme `BNAP`, the four `BNAP-*` fields, the well-known URI `bnap`, and the BNAP registry group with RFC 8126 policies), references, acknowledgments. Checked: both hex blocks equal `vectors.json` byte for byte, no non-ASCII character is left, every declared reference is cited and every citation is declared, the YAML front matter and all workflow files parse.
+
+**Not built locally.** `xml2rfc` and `kramdown-rfc` are not installed on this machine, and installing them (pipx, gem) was not done in this session: it downloads packages, which needs the owner's go-ahead, and disk is tight. The build is left to CI.
+
+**For the orchestrator or N12 (who own the repository root):** GitHub runs workflows only from the root `.github/workflows/`, and i-d-template expects the draft at the repository root. Either copy `ietf/ci/bnap-monorepo.yml` to `.github/workflows/ietf-draft.yml` (it diffs the generated source against draft-00, then builds text and HTML and uploads them), or split the directory into its own repository (`git subtree split --prefix=ietf`) as `bnap-protocol/draft-bnap-socket`, where the template workflows run unchanged. The front matter's `venue` already points at that repository name.
+
+**Before a Datatracker submission (owner):** the author is an organization only, and the Datatracker wants a person; the name `draft-bnap-socket` lacks the `draft-<author>-` part individual drafts usually carry.
+
+## 3. nuts/ and docs/
+
+| File | What it is |
+| --- | --- |
+| `nuts/xx-key-secret-proofs.md` | NUT-XX key-secret proofs: secret = hex(K), witness = one BIP-340 signature by K over a context digest; key-secret keysets and key isolation; `swap`, `melt` and external contexts; theft-resistant NUT-22 tokens; NUT-13 type `0x02`; test vectors |
+| `nuts/tools/key_secret_vectors.py` | Regenerates those vectors (`python3 -I nuts/tools/key_secret_vectors.py reference/python`); checks `hash_to_curve` against the three NUT-00 vectors first, and they match |
+| `nuts/xx-http-402-self-issued-mint.md` | NUT-XX HTTP 402 with a self-issued mint: a NUT-24 profile; `X-Cashu` keeps a NUT-18/NUT-26 request (own mint only, `i` = OfferID hex) next to the BNAP offer; payment in `BNAP-Credential`; change and receipt in `BNAP-Receipt`; funding in the 402; alignment table |
+| `nuts/README.md` | Submission plan: one issue first (NUT numbers, NUT-13 type `0x02`, NUT-24 and NUT-22 feedback), then one pull request per NUT, merged only with two independent implementations |
+| `docs/payment-method-cashu.md` | Registration of `cashu` in the HTTP Payment Methods registry of draft-httpauth-payment-01: the template plus the six items its Section 9.1 requires; BNAP use as `payment:cashu/charge` |
+
+All three markdown files in `nuts/` pass Prettier 3.9.9 (run from the local npx cache, nothing downloaded). `docs/` follows the repository's compact table style instead.
+
+Downstream: the key-secret swap digest (`Cashu_KeySecret_Swap_v1`) and auth digest (`Cashu_KeySecret_Auth_v1`) are new tags only the NUT uses; `bnap:notes` itself uses only the external context (the socket Digest).
+
+## 4. Decisions made
 
 All 27 provisional decisions are listed in Appendix B of the notes document (P1 to P27). The ones with the widest effect:
 
@@ -70,7 +102,7 @@ All 27 provisional decisions are listed in Appendix B of the notes document (P1 
 - P19: NUT-04 minting of BNAP keysets requires a NUT-20 key and commits the RailId.
 - P21: NUT-13 derivation type `0x02` for note keys is unassigned upstream.
 
-## 3. ERRATA rows (for the orchestrator to merge into spec/ERRATA.md)
+## 5. ERRATA rows (for the orchestrator to merge into spec/ERRATA.md)
 
 This node does not own `spec/ERRATA.md`. Proposed rows, numbered from 35:
 
@@ -87,10 +119,17 @@ This node does not own `spec/ERRATA.md`. Proposed rows, numbered from 35:
 | 43 | HTTP status of a FAILED outcome: draft-00 8.2, 10.2 | Error codes have statuses; a FAILED outcome is a Response, not an error | v0.4: 502 | Unspecified; the HTTP carrier should say | yes |
 | 44 | Registry example vs vectors: draft-00 11, 14 | `local_id` is a 33-byte point | Vectors use a 32-byte stand-in for Y and a bare 64-byte witness | Placeholders, as draft-00 14 says; the notes vectors (notes draft 18) will use real values | no |
 | 45 | NUT-13 derivation type: notes 12.1 | (draft-00 silent) | v0.4: type `0x02` "to be requested from the Cashu maintainers" | Use `0x02` provisionally; request it upstream before freezing vectors | yes |
+| 46 | Tab references in draft-00: draft-00 1, 12, 15 | "the first tab" | (I-D form) | The I-D cites the overview as a reference instead; the repository text keeps "the first tab" (ERRATA 28) | no |
+| 47 | HTTP field and auth-scheme registration status: draft-00 13 | "To IANA directly" | (I-D form) | The I-D asks for provisional field registrations and a well-known URI with status provisional, change controller IETF | no |
+| 48 | ACT and suites: notes 19; overview catalogue | v0.4: suites 1 to 3 are tags inside the notes scheme | Overview catalogue lists ACT as its own scheme | Suites become scheme IDs; notes has no suite tag | yes |
+| 49 | Verify on replays: draft-00 6.3, 6.4 | A replay is recognized at commit, after the scheme has verified the credential again | (silent on scheme state) | A scheme's `verify` MUST NOT reject an artifact because it was used before, or replays fail before commit; the socket text should say so. Notes keeps use-state checks out of verify (notes P26, P27) | no |
 
-## 4. Known gaps
+## 6. Known gaps
 
 - The notes test vectors themselves (section 18) are not produced here; a reference-code owner must generate them.
 - The NUT-13 derivation layout in 12.1 was taken from the current NUT-13 text and must be checked against its test vectors before the notes vectors are frozen.
 - BOLT12 funding (NUT-25) is only mentioned, not specified for redemption inside a credential.
 - Withdrawal (BNAP-W) is out of scope, as in v0.4.
+- The I-D has not been rendered by xml2rfc yet; the first CI run may report warnings (for example typographic quotes from kramdown's smart quotes in table cells that had to leave code spans).
+- The NUT drafts use relative links (`00.md`) that resolve only inside cashubtc/nuts.
+- `UseStore` needs a single-ID insert-or-compare for NUT-04 minting (section 1 above); without it the issuer cannot follow notes 8.5.
