@@ -655,36 +655,37 @@ The exact offer lives 10 minutes. With the default `pending_timeout` of 300 s, i
 
 ## Appendix B. Provisional decisions
 
-Each of these is marked "(provisional)" where it is made, and each is open to owner review.
+Each of these is marked "(provisional)" where it is made, and each is open to owner review. They are numbered in the order of the sections that make them; the rows of section 19 that say "(provisional)" restate P4, P11, P12, P25 and P27, except the one for P30, which section 19 makes.
 
 | # | Where | Decision |
 | --- | --- | --- |
-| P1 | 3.1, 6.3, 7.2 | One output list, a complete power-of-two ladder covering the value, replaces v0.4's separate change and refund lists; settlement signs a greedy subset worth exactly `value - charged` |
-| P2 | 6.3 | Wallets SHOULD send the canonical ladder 1, 2, …, 2^(b-1) |
-| P3 | 3.5 | Unknown records inside a notes body or witness are rejected even when odd; GREASE belongs in socket streams |
+| P1 | 3.3 | Clients SHOULD list outputs in ascending amount order |
+| P2 | 3.5 | Unknown records inside a notes body or witness are rejected even when odd; GREASE belongs in socket streams |
+| P3 | 3.6, 5.1 | `max_inputs` and `max_outputs` default to 16 |
 | P4 | 4.2 | Full 33-byte keyset IDs only, never the short ID |
 | P5 | 4.2 | Every BNAP keyset publishes a `final_expiry` |
-| P6 | 3.6, 5.1 | `max_inputs` and `max_outputs` default to 16 |
-| P7 | 5.1 | Notes parameters follow the even/odd rule |
-| P8 | 5.4 | `fund_quote` only in exact-scope offers, and never on routes requiring `link-payment = unlinkable` |
-| P9 | 5.4 | Gates may cache exact-scope offers that carry a `fund_quote` |
-| P10 | 6.4 | A rail that does not confirm a fund payment gives BAD\_CREDENTIAL with `QUOTE_UNPAID` |
-| P11 | 6.4 | Outputs and quote IDs yield no local ID; the RailId guards the quote |
-| P12 | 7.1 | A FAILED outcome has `charged` 0 and refunds the whole value |
-| P13 | 7.3 | No `scheme_result` when the change is 0 |
-| P14 | 7.4 | Settlement signs a `B'` that was signed before instead of failing, and adds its own record |
-| P26 | 7.4 | The signed-output table is keyed by `(B', source)`, the source being `H(body)` or `rk_mint`, and keeps every record |
-| P27 | 6.2 | Verify does not check whether a fund quote has issued; the RailId commit does, so replays of funded credentials work |
-| P15 | 7.5 | The refund of a timed-out outcome is computed when the client replays the credential |
-| P16 | 8 | A body's `fund` redeems BOLT11 (NUT-23) quotes only; BOLT12 credit is minted through NUT-25 |
-| P17 | 8.1 | The `BNAP-Fund` request field, an RFC 9651 Dictionary, needs registering |
-| P18 | 8.2 | One quote per offer nonce and a per-address rate limit are MUST, as DECISIONS row 24 sets for natives |
-| P19 | 8.5 | BNAP quotes require a NUT-20 key; NUT-04 minting commits the RailId under `rk_mint` in one transaction |
-| P20 | 11 | Swaps use a price-0 manifest route with id `notes-swap`, answered by the gate |
-| P21 | 12.1 | Derivation type `0x02` for note keys; the counter's top 16 bits name the slot |
-| P22 | 12.2 | Wallets record their counters in the backup; restore scans at least that far |
-| P23 | 13.2 | `UNIT_MISMATCH` folds into `UNKNOWN_KEYSET` |
-| P24 | 15 | A wallet may retry without a binding after a BINDING error |
-| P25 | 19 | Suites 1 to 3 become their own scheme IDs |
-| P29 | 5.4, 7.5, 8.2, 15 | Admission cutoff: no new notes commit later than the deadline minus `pending_timeout` minus 60 s, applied after the replay lookup; offers that list notes admit for at least 60 s; fund quotes expire by the cutoff; wallets replay before the deadline |
-| P28 | 6.2, 13.1 | Verification reads no use state; v0.4's check that no output was signed before is dropped, and `bnap:notes/OUTPUT_REUSED` is reserved |
+| P6 | 5.1 | Notes parameters follow the even/odd rule |
+| P7 | 5.4 | `fund_quote` only in exact-scope offers, and never on routes requiring `link-payment = unlinkable` |
+| P8 | 5.4 | Gates may cache exact-scope offers that carry a `fund_quote` |
+| P9 | 5.4, 7.5, 8.2, 15 | Admission cutoff: no new notes commit later than the deadline minus `pending_timeout` minus 60 s, checked after the replay lookup; offers that list notes admit for at least 60 s; fund quotes expire by the cutoff; wallets replay before the deadline |
+| P10 | 6.2 | Verification does not check whether a fund quote has issued; the RailId commit does, so replays of funded credentials work |
+| P11 | 6.2, 13.1 | Verification reads no use state; v0.4's check that no output was signed before is dropped, and `bnap:notes/OUTPUT_REUSED` is reserved |
+| P12 | 6.3, 7.2 | One output list, a complete power-of-two ladder covering the value, replaces v0.4's separate change and refund lists; settlement signs a greedy subset worth exactly `value - charged` |
+| P13 | 6.3 | Wallets SHOULD send the canonical ladder 1, 2, …, 2^(b-1) |
+| P14 | 6.4 | A rail that does not confirm a fund payment gives BAD\_CREDENTIAL with `QUOTE_UNPAID` |
+| P15 | 6.4 | Outputs and quote IDs yield no local ID; the RailId guards the quote |
+| P16 | 7.1 | A FAILED outcome has `charged` 0 and refunds the whole value |
+| P17 | 7.3 | No `scheme_result` when the change is 0 |
+| P18 | 7.4 | The signed-output table is keyed by `(B', source)`, the source being `H(body)` or `rk_mint`, and keeps every record |
+| P19 | 7.4 | Settlement signs a `B'` that was signed before instead of failing, and adds its own record |
+| P20 | 7.5 | The refund of a timed-out outcome is computed when the client replays the credential |
+| P21 | 8 | A body's `fund` redeems BOLT11 (NUT-23) quotes only; BOLT12 credit is minted through NUT-25 |
+| P22 | 8.1 | The `BNAP-Fund` request field, an RFC 9651 Dictionary, needs registering |
+| P23 | 8.2 | One quote per offer nonce and a per-address rate limit are MUST, as DECISIONS row 24 sets for natives |
+| P24 | 8.5 | BNAP quotes require a NUT-20 key; NUT-04 minting commits the RailId under `rk_mint` in one transaction |
+| P25 | 11 | Swaps use a price-0 manifest route with id `notes-swap`, answered by the gate |
+| P26 | 12.1 | Derivation type `0x02` for note keys; the counter's top 16 bits name the slot |
+| P27 | 12.2 | Wallets record their counters in the backup; restore scans at least that far |
+| P28 | 13.2 | `UNIT_MISMATCH` folds into `UNKNOWN_KEYSET` |
+| P29 | 15 | A wallet may retry without a binding after a BINDING error |
+| P30 | 19 | Suites 1 to 3 become their own scheme IDs |
