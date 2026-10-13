@@ -32,7 +32,7 @@ Bodies and witnesses are strict: any unknown record, even or odd, any empty reco
 - rail references: none, except kind `ln` with the invoice payment hash when the body holds `fund`;
 - value: `I + F - fee`, fee = `(sum of input_fee_ppk + 999) div 1000`, checked u64 arithmetic (6.3).
 
-Outputs and quote IDs are not use IDs. `verify` has no side effects and runs the checks of 6.2 in order. It checks that a fund quote is paid, never whether it has issued: the RailId commit is the single-use check, which keeps replays of funded credentials working.
+Outputs and quote IDs are not use IDs. `verify` has no side effects and runs the seven checks of 6.2 in order. It reads no use state at all: it checks that a fund quote is paid, never whether it has issued (the RailId commit is the single-use check), and it never consults the signed-output table. That keeps every replay of a committed credential on the socket's replay path. There is no `OUTPUT_REUSED` check any more; the code `bnap:notes/OUTPUT_REUSED` is reserved and never sent.
 
 ### Settlement (section 7)
 
@@ -40,7 +40,8 @@ Outputs and quote IDs are not use IDs. `verify` has no side effects and runs the
 - The outputs must form a complete power-of-two ladder covering the value (6.3, checked at verify as `BAD_OUTPUTS`).
 - `select(outputs, change)`: greedy by amount descending, then index ascending. Proven exact on complete ladders (brute force over 942 ladders, 55,542 targets, zero failures).
 - DLEQ with NUT-12's deterministic nonce is a MUST, so settle is byte-deterministic.
-- The signed-output table (NUT-09) must be durable no later than the outcome write. Each record carries a 32-byte source: `H(pay body)` of the credential that settled it, or `rk_mint`. Verify's `OUTPUT_REUSED` check skips records whose source equals `H(this body)`, so a replay of the same credential still reaches the socket's replay path. A `B'` signed meanwhile is signed again, never a settle failure.
+- The signed-output table (NUT-09) must be durable no later than the outcome write. It is keyed by `(B', source)`, where the 32-byte source is `H(pay body)` of the credential that settled the output, or `rk_mint`, and it keeps every record. A `B'` signed before is signed again and gets its own record, never a settle failure. Records with the same keyset, amount and `B'` hold the same `C'` and DLEQ proof (NUT-12's nonce depends on `a`, `A`, `B'`, `C'` only), so NUT-09 answers with any record whose keyset, amount and `B'` match.
+- NUT-04 minting (8.5) still refuses outputs signed before, but checks inside its transaction and only after recognizing a retry of the same mint request (`used[RailId] = rk_mint`).
 - Timeout refunds are computed lazily when the client replays the credential (7.5). The gate must support "outcome FAILED, no scheme_result yet" and fill it with one conditional write.
 
 ### Issuer and store requirements that cross crate boundaries
@@ -122,7 +123,7 @@ This node does not own `spec/ERRATA.md`. Proposed rows, numbered from 35:
 | 46 | Tab references in draft-00: draft-00 1, 12, 15 | "the first tab" | (I-D form) | The I-D cites the overview as a reference instead; the repository text keeps "the first tab" (ERRATA 28) | no |
 | 47 | HTTP field and auth-scheme registration status: draft-00 13 | "To IANA directly" | (I-D form) | The I-D asks for provisional field registrations and a well-known URI with status provisional, change controller IETF | no |
 | 48 | ACT and suites: notes 19; overview catalogue | v0.4: suites 1 to 3 are tags inside the notes scheme | Overview catalogue lists ACT as its own scheme | Suites become scheme IDs; notes has no suite tag | yes |
-| 49 | Verify on replays: draft-00 6.3, 6.4 | A replay is recognized at commit, after the scheme has verified the credential again | (silent on scheme state) | A scheme's `verify` MUST NOT reject an artifact because it was used before, or replays fail before commit; the socket text should say so. Notes keeps use-state checks out of verify (notes P26, P27) | no |
+| 49 | Verify on replays: draft-00 6.3, 6.4, 8.2 | A replay is recognized at commit, after the scheme has verified the credential again. 8.2 gives `bnap:notes/OUTPUT_REUSED` as its example scheme code | v0.4: a blinded output signed before is rejected with `OUTPUT_REUSED` | A scheme's `verify` MUST NOT reject an artifact because it, or anything in it, was used before; otherwise a replay of a committed credential fails before commit and the client loses the PENDING answer, the stored response, a missed receipt and the timeout refund. The socket text should say so. Notes verify reads no use state: not the use store, not quote issuance, not the signed-output table (notes 6.2). The v0.4 output check is dropped, because a front-runner that got one of a committed credential's `B'` signed first (a cheap price-0 swap) would otherwise turn every replay of it into BAD\_CREDENTIAL; `bnap:notes/OUTPUT_REUSED` is reserved, so 8.2's example still names a registered code (notes P27, P28) | yes |
 
 ## 6. Known gaps
 

@@ -147,7 +147,7 @@ A wallet MAY store notes as ordinary Cashu proofs, for example in a NUT-00 V4 to
 - **Final expiry.** Every BNAP keyset MUST publish a `final_expiry` (NUT-02) (provisional; without one, draft-00 6.2 would keep its spend records forever).
 - **No signature aggregation.** One BIP-340 signature per `K`. Batch verification is fine. Buying a note never proves knowledge of `k_n`, so a summed key could steal another holder's note.
 - **Denominations.** Amounts are powers of two. A wallet uses each `K` once, at one origin.
-- **Outputs.** Every `B'` is a valid point other than infinity. A `B'` the issuer has signed before is rejected with `bnap:notes/OUTPUT_REUSED` (6.2, step 6); a replay of the same credential gets the stored response instead (draft-00 6.4).
+- **Outputs.** Every `B'` is a valid point other than infinity. A credential is never rejected because one of its `B'` was signed before: settlement signs it again (7.4), and only the client that reused it can lose value. Verification reads no use state at all (6.2), so a replay of a committed credential always reaches the socket's replay path (draft-00 6.4). NUT-04 minting refuses a `B'` signed before, as NUT-04 does (8.5).
 - **DLEQ.** The issuer returns a NUT-12 DLEQ proof with every blind signature, made with NUT-12's deterministic nonce, which this scheme makes a MUST (7.4). Clients never send a DLEQ proof or a blinding factor to the issuer, because either would link a spend to the purchase.
 
 ## 5. Offer parameters
@@ -203,7 +203,7 @@ These are the NUT-23 quote fields a client needs, so it can pay from the 402 wit
 
 ### 6.1 What verify gets
 
-The gate calls the scheme's `verify` only after the offer checks of draft-00 4.4, and passes it the pay body and witness, the Digest the gate computed (draft-00 5.2), the chosen pay entry (amount, unit and parameters), the current time, read access to the issuer's keyset, signed-output and quote tables, and the signer's check of unblinded notes. `verify` has no side effects: it writes nothing to any store.
+The gate calls the scheme's `verify` only after the offer checks of draft-00 4.4, and passes it the pay body and witness, the Digest the gate computed (draft-00 5.2), the chosen pay entry (amount, unit and parameters), the current time, read access to the issuer's keyset and quote tables, and the signer's check of unblinded notes. `verify` has no side effects: it writes nothing to any store.
 
 ### 6.2 Checks
 
@@ -214,11 +214,12 @@ The scheme runs these checks in this order, cheapest first. The first failure en
 3. **Amounts.** Every amount is a power of two for which its keyset has a key (`BAD_AMOUNT`).
 4. **Fund.** If the body holds `fund`, the quote exists, has method `bolt11` and unit `sat`, carries a NUT-20 `pubkey`, and is paid in full (`QUOTE_UNPAID`). Verification does not ask whether the quote has issued: the RailId commit decides that atomically (8.4, 8.5), so a quote used before gives SPENT at commit, and a replay of the same credential still reaches the socket's replay path (provisional).
 5. **Value and outputs.** The value of 6.3 is defined, and the outputs form a complete ladder that covers it (`BAD_AMOUNT` or `BAD_OUTPUTS`).
-6. **Fresh outputs.** No output's `blinded` point is in the issuer's signed-output table under another source (`OUTPUT_REUSED`). A record whose source is `H(body)` of this very body is this credential's own change: a replay of the credential finds it, and the socket then returns the stored response (draft-00 6.4) (provisional).
-7. **Witness.** The i-th signature of `input_sigs` verifies under the i-th input's `K` over the Digest, and `fund_sig` verifies under the quote's `pubkey` (`BAD_SIGNATURE`).
-8. **Notes.** For every input, `C = a·hash_to_curve(hex(K))` for the key `a` of its keyset and amount, checked by the signer (`BAD_SIGNATURE`).
+6. **Witness.** The i-th signature of `input_sigs` verifies under the i-th input's `K` over the Digest, and `fund_sig` verifies under the quote's `pubkey` (`BAD_SIGNATURE`).
+7. **Notes.** For every input, `C = a·hash_to_curve(hex(K))` for the key `a` of its keyset and amount, checked by the signer (`BAD_SIGNATURE`).
 
 The scheme does not compare the value with the price: the socket does that after pricing and answers UNDERPAID (draft-00 7).
+
+**No use state.** Verification never asks whether anything in the credential was used before: not the use store, not whether the fund quote has issued (step 4), and not the signed-output table. The socket decides use at commit (draft-00 6.3), after verification, and recognizes a replay there. A check of earlier use inside `verify` would fail a replay of a committed credential before commit, and the client would lose the stored response, a missed receipt and the timeout refund (draft-00 6.4, 7.5). v0.4's check that no output was signed before is therefore dropped (provisional): a `B'` signed before is signed again at settlement (7.4).
 
 ### 6.3 Value and the output ladder
 
@@ -292,7 +293,9 @@ The client knows `value` from its own body and the offer, and `charged` from the
 
 Draft-00 6.4 requires `settle` to be deterministic. A blind signature `a·B'` already is. The issuer MUST make every DLEQ proof with NUT-12's deterministic nonce, which NUT-12 itself only recommends; with it, the same verified credential, outcome and charge always give byte-identical `scheme_result`.
 
-The issuer records every signed output, with its keyset, amount, `C'`, DLEQ proof and source, in a signed-output table that it keeps until the output keyset's final expiry, as NUT-09 requires. The source is 32 bytes: `H(body)` of the credential body whose settlement signed the output, or `rk_mint` for a NUT-04 mint (8.5). It lets verification tell a replay's own change from a reused output (6.2, step 6) (provisional). These records MUST be durable no later than the outcome write of draft-00 6.4, and therefore before the Response is sent. If a `B'` was signed meanwhile under another credential or mint request, `settle` still signs it and does not fail, and the table keeps the first record (provisional). The two signatures share one `Y`, so at most one of them can ever be spent: the client that reused the output loses value, and the operator loses nothing.
+The issuer records every signed output, with its keyset, amount, `B'`, `C'`, DLEQ proof and source, in a signed-output table that it keeps until the output keyset's final expiry, as NUT-09 requires. The source is 32 bytes: `H(body)` of the credential body whose settlement signed the output, or `rk_mint` for a NUT-04 mint (8.5). The table is keyed by `(B', source)` and keeps every record: a `B'` signed under two sources has two records (provisional). These records MUST be durable no later than the outcome write of draft-00 6.4, and therefore before the Response is sent.
+
+If a `B'` was signed before, under another credential or mint request, `settle` still signs it, does not fail, and adds its own record (provisional). Records for the same keyset, amount and `B'` carry the same `C'` and the same DLEQ proof, because `C' = a·B'` and NUT-12's deterministic nonce is derived from `a`, `A`, `B'` and `C'` only. A NUT-09 restore therefore answers with any record whose keyset, amount and `B'` match the request. The two signatures share one `Y`, so at most one of them can ever be spent: the client that reused the output loses value, and the operator loses nothing. A third party that copies someone else's `B'` gains nothing either (section 17).
 
 ### 7.5 Replays and timeouts
 
@@ -348,13 +351,14 @@ mint(quote, outputs):
   confirm through the rail that the quote's invoice is paid      otherwise the NUT-04 "not paid" error
   sigs = blind signatures and DLEQ proofs for outputs            deterministic, as in 7.4
   in one serializable transaction:
-      if used[RailId] is absent:  used[RailId] = rk_mint; record sigs with source rk_mint
-      elif used[RailId] = rk_mint: sigs = the stored records    a retry of the same mint request
-      else:                        abort                         NUT-04 error for an issued quote
+      if used[RailId] = rk_mint:      return sigs                 a retry of the same mint request
+      if used[RailId] exists:         abort                       NUT-04 error for an issued quote
+      if any output's B' has a record: abort                      NUT-04 error for an output signed before
+      used[RailId] = rk_mint; record sigs with source rk_mint
   return sigs
 ```
 
-A mint commit has no outcome record and no PENDING state, because signing comes before the transaction and the transaction is the whole operation. A retry with the same quote and outputs gets the same signatures, as NUT-19 cached responses would give. The issuer keeps the RailId record at least as long as the quote record.
+A mint commit has no outcome record and no PENDING state, because signing comes before the transaction and the transaction is the whole operation. A retry with the same quote and outputs is recognized before the output check, and gets the same signatures, as NUT-19 cached responses would give, because signing is deterministic. An abort consumes nothing: the quote stays mintable, and a client whose outputs were refused derives fresh ones and signs a new NUT-20 request. The issuer keeps the RailId record at least as long as the quote record.
 
 ### 8.6 Quote state
 
@@ -421,11 +425,12 @@ Every scheme error is sent with socket code BAD\_CREDENTIAL (10, HTTP 402) and o
 | `bnap:notes/UNKNOWN_KEYSET` | An input keyset is not in the offer, unknown, revoked or past its final expiry, or an output keyset is not active | Refresh the offer and keysets; swap old notes |
 | `bnap:notes/BAD_AMOUNT` | An amount is not a power of two with a key, the arithmetic overflows, or the fees exceed inputs plus fund | Fix the amounts |
 | `bnap:notes/BAD_OUTPUTS` | The outputs are not a complete ladder covering the value | Send the canonical ladder (6.3) |
-| `bnap:notes/OUTPUT_REUSED` | A blinded output was signed before | Derive fresh outputs |
 | `bnap:notes/BAD_SIGNATURE` | A note, an input signature or the fund signature failed | Drop the bad input, or check the wallet's keys |
 | `bnap:notes/QUOTE_UNPAID` | The fund quote is unknown, unpaid, not BOLT11 in sat, or has no NUT-20 key, or the rail does not confirm its payment. A quote already issued gives socket SPENT (12) at commit instead | Pay it, wait for the payment, or drop it |
 
 A rail that cannot be reached gives UNAVAILABLE (15), never admission (draft-00 12).
+
+`bnap:notes/OUTPUT_REUSED`, which v0.4 defined and draft-00 8.2 uses as its example of a scheme code, is reserved and never sent: verification does not reject a reused output (6.2), and settlement signs it again (7.4) (provisional).
 
 ### 13.2 The v0.4 codes in draft-00
 
@@ -441,7 +446,7 @@ A rail that cannot be reached gives UNAVAILABLE (15), never admission (draft-00 
 | `WRONG_SCOPE` | Socket WRONG\_SCOPE (6); a binding mismatch is BINDING (11) |
 | `WRONG_AMOUNT` | Socket UNDERPAID (9) when the value is below the price; `bnap:notes/BAD_OUTPUTS` when the outputs do not fit |
 | `BAD_SIGNATURE` | `bnap:notes/BAD_SIGNATURE` |
-| `OUTPUT_REUSED` | `bnap:notes/OUTPUT_REUSED` |
+| `OUTPUT_REUSED` | Not sent; `bnap:notes/OUTPUT_REUSED` is reserved (13.1) |
 | `SPENT` | Socket SPENT (12) |
 | `QUOTE_UNPAID` | `bnap:notes/QUOTE_UNPAID` |
 | `PENDING` | Socket PENDING (13) |
@@ -540,7 +545,7 @@ The socket's considerations (draft-00 section 12) apply. These are the scheme's 
 | Change withheld or miscounted | The deterministic selection (7.2), checked by the client against the signed Response |
 | A replay or crash paying change twice | The socket's single settle write and stored `scheme_result` (draft-00 6.4); deterministic signing (7.4) |
 
-**Output front-running.** Someone who sees a credential in transit, which the TLS binding and TLS itself make hard, can copy its `B'` values into a credential of its own. That costs it the price of its own action, and gains it nothing: it cannot unblind the signatures. If its credential settles first, the victim's credential fails verification with `OUTPUT_REUSED` before commit, consumes nothing, and is retried with fresh outputs.
+**Output front-running.** Someone who sees a credential in transit or in a log can copy its `B'` values into a credential of its own, for example a price-0 swap (section 11) whose change is one of the victim's outputs, and have it settle first, even while the victim's action is still running. This gains it nothing and costs the victim nothing. The front-runner cannot unblind what it gets back, so the output it spent its own value on is lost to it. The victim's credential is unaffected at every stage, because verification never consults the signed-output table (6.2): before commit it is admitted as usual; after commit, a replay still reaches the socket's replay path, so a PENDING answer, the stored response, a missed receipt and a timeout refund all stay available (draft-00 6.4, 7.5); and its settlement signs each of its `B'` under its own keyset and amount (7.4), which only the victim can unblind. Had verification rejected outputs signed before, as v0.4 did, the same copy would have turned every replay of a committed credential into BAD\_CREDENTIAL, and the victim would have lost its change or its whole refund.
 
 **Accepted residual risks:**
 
@@ -563,7 +568,8 @@ The `bnap:notes` vectors MUST be published, generated by a reference encoder and
 5. **Value and fees:** inputs on keysets with nonzero `input_fee_ppk`, showing the rounding of 6.3.
 6. **Settlement:** for the credential of item 3, the selected indices and the `scheme_result` bytes for an OK outcome with a metered charge, for an OK outcome with charge equal to the value (no change), and for a FAILED outcome; and a Response carrying each.
 7. **Minting:** `rk_mint` for a quote and two outputs (8.5).
-8. **Negative vectors**, each with the expected `scheme_code`: inputs out of order; a repeated `K`; two outputs with one `B'`; an unknown odd record in the body; a record with an empty value; a short keyset ID; a non-power-of-two amount; an incomplete ladder; a ladder whose total is below the value; fees above the inputs; `input_sigs` of the wrong length; `fund` without `fund_sig`; a witness signature over another Digest; a note whose `C` does not verify; an output keyset that is not active.
+8. **A reused output:** a credential one of whose `B'` already has a signed-output record under another source. It verifies, and its settlement signs that `B'` again, with the same `C'` and DLEQ proof when keyset and amount match, and adds a second record (6.2, 7.4).
+9. **Negative vectors**, each with the expected `scheme_code`: inputs out of order; a repeated `K`; two outputs with one `B'`; an unknown odd record in the body; a record with an empty value; a short keyset ID; a non-power-of-two amount; an incomplete ladder; a ladder whose total is below the value; fees above the inputs; `input_sigs` of the wrong length; `fund` without `fund_sig`; a witness signature over another Digest; a note whose `C` does not verify; an output keyset that is not active.
 
 The socket vectors in `vectors/vectors.json` use a placeholder notes body and a bare 64-byte witness; they test the socket's hashing, not this scheme, and are not valid notes credentials under this document.
 
@@ -583,6 +589,7 @@ Draft-00 wins over the v0.4 text and the overview in each of these places:
 | Replay lookup by Y with 16-byte Digest tags | The socket's ReplayKey and outcome record (draft-00 6.3, 6.4) | The socket owns replay |
 | Amount rule: inputs + quote - fees - outputs = amount, exactly | `value ≥ price` (checked by the socket) and change of exactly `value - charged` at settlement | Draft-00 7: the charge is known only at settlement in metered offers |
 | Separate `outputs` (change) and `refund_outputs` | One list of outputs forming a complete ladder that covers the value; a deterministic subset is signed (6.3, 7.2) (provisional) | A charge fixed at settlement needs change of any size |
+| A blinded output signed before is rejected with `OUTPUT_REUSED` | Not checked by verification; a `B'` signed before is signed again at settlement, and the code is reserved (6.2, 7.4, 13.1) (provisional) | Draft-00 6.4: a replay of a committed credential must reach the replay path, which a use check in `verify` would block |
 | Short keyset ID allowed on the wire | Full 33-byte keyset ID only (provisional) | One encoding; no ambiguous short IDs |
 | A suite tag on every input; suites 1 to 3 reserved | No suite tag. A different construction gets its own scheme ID, as ACT does in the overview's catalogue (provisional) | Draft-00 identifies schemes by ID |
 | `Authorization: BNAP` or `BNAP-Authorization`; `Authentication-Info` | `BNAP-Credential` and `BNAP-Receipt` (draft-00 10.2) | Draft-00 10.2 |
@@ -653,8 +660,8 @@ Each of these is marked "(provisional)" where it is made, and each is open to ow
 | P11 | 6.4 | Outputs and quote IDs yield no local ID; the RailId guards the quote |
 | P12 | 7.1 | A FAILED outcome has `charged` 0 and refunds the whole value |
 | P13 | 7.3 | No `scheme_result` when the change is 0 |
-| P14 | 7.4 | Settlement signs a `B'` that was signed meanwhile instead of failing |
-| P26 | 6.2, 7.4 | Signed-output records carry their source (`H(body)` or `rk_mint`), so a replay is not mistaken for a reused output |
+| P14 | 7.4 | Settlement signs a `B'` that was signed before instead of failing, and adds its own record |
+| P26 | 7.4 | The signed-output table is keyed by `(B', source)`, the source being `H(body)` or `rk_mint`, and keeps every record |
 | P27 | 6.2 | Verify does not check whether a fund quote has issued; the RailId commit does, so replays of funded credentials work |
 | P15 | 7.5 | The refund of a timed-out outcome is computed when the client replays the credential |
 | P16 | 8 | A body's `fund` redeems BOLT11 (NUT-23) quotes only; BOLT12 credit is minted through NUT-25 |
@@ -667,3 +674,4 @@ Each of these is marked "(provisional)" where it is made, and each is open to ow
 | P23 | 13.2 | `UNIT_MISMATCH` folds into `UNKNOWN_KEYSET` |
 | P24 | 15 | A wallet may retry without a binding after a BINDING error |
 | P25 | 19 | Suites 1 to 3 become their own scheme IDs |
+| P28 | 6.2, 13.1 | Verification reads no use state; v0.4's check that no output was signed before is dropped, and `bnap:notes/OUTPUT_REUSED` is reserved |

@@ -121,7 +121,7 @@ Wallets SHOULD swap proofs out of a keyset that nears its final expiry, through 
 
 ## Errors
 
-Errors travel in `BNAP-Error` with the HTTP status the socket assigns ([socket][socket], section 8.2). Errors from the Cashu side are code 10 (`BAD_CREDENTIAL`, status 402) with a `bnap:notes/...` code, such as `bnap:notes/OUTPUT_REUSED` or `bnap:notes/QUOTE_UNPAID` ([notes][notes], section 13). A proof spent before gives code 12 (`SPENT`, status 409). Errors are not signed, and a wallet MUST NOT treat one as proof of anything.
+Errors travel in `BNAP-Error` with the HTTP status the socket assigns ([socket][socket], section 8.2). Errors from the Cashu side are code 10 (`BAD_CREDENTIAL`, status 402) with a `bnap:notes/...` code, such as `bnap:notes/BAD_OUTPUTS` or `bnap:notes/QUOTE_UNPAID` ([notes][notes], section 13). A proof spent before gives code 12 (`SPENT`, status 409). Errors are not signed, and a wallet MUST NOT treat one as proof of anything.
 
 ## Alignment with NUT-24, NUT-18 and NUT-26
 
