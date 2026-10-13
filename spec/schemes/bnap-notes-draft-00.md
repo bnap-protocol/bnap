@@ -1,0 +1,667 @@
+<!--
+  Written for this repository (not exported from the source doc).
+  Spec text licensed CC-BY-4.0, (c) BNAP contributors.
+  Restates spec/schemes/bnap-notes.md (v0.4 profile) and the bnap:notes section of
+  spec/overview-v0.5.md in the terms of spec/socket-draft-00.md, as DECISIONS.md row 31 requires.
+-->
+
+# bnap:notes, scheme draft-00
+
+2026-10-13 · BNAP contributors
+
+## 1. Status and scope
+
+**Status.** Working draft 00 of the `bnap:notes` credential scheme. It restates the v0.4 Cashu profile ([bnap-notes.md](bnap-notes.md)) and the `bnap:notes` section of the v0.5.1 overview ([overview-v0.5.md](../overview-v0.5.md)) as a plug for the socket of [socket-draft-00.md](../socket-draft-00.md) ("draft-00" below). Where those texts and draft-00 differ, draft-00 wins; section 19 lists every such difference. Every choice this document had to make that none of its sources settles is marked "(provisional)" and collected in Appendix B for owner review.
+
+**Scope.** This document defines everything the socket leaves to the scheme: the body and witness bytes (section 3, the section the draft-00 registry example points to), the Note format, the pay entry parameters, verification, the change and refund outputs, funding inside a 402, input fees, keyset rotation, swaps, seed recovery, the scheme's error codes, its registry entry and its test-vector requirements. It does not restate the socket: the Offer, the Credential envelope, the Context, Digest and ReplayKey, the use store, pricing, the Response and its receipt are as draft-00 defines them, and this document only says what the scheme puts into them and takes out of them.
+
+**What the scheme is, in one paragraph.** The operator runs its own Cashu-style issuer for its own origin. A client buys credit over Lightning with Cashu's mint flow (NUT-23, NUT-04, NUT-20), or inside the 402 that asked it to pay, and holds the credit as Notes: Cashu proofs whose secret is the hex of a public key K. To pay for an action it puts notes and blinded change outputs in the body of a socket Credential and signs the socket's Digest with each K. The gate checks the notes offline, commits each note's `Y` as a single-use ID, and at settlement signs exactly `value - charged` worth of the client's blinded outputs as change. Wallets recover from a seed through NUT-13, NUT-09 and NUT-07.
+
+## 2. Conventions
+
+The key words MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT, RECOMMENDED, MAY and OPTIONAL are to be read as described in BCP 14 (RFC 2119, RFC 8174) when, and only when, they appear in all capitals.
+
+### 2.1 Notation
+
+Every notation of draft-00 section 2 applies unchanged: `H`, `H_tag`, `‖`, BigSize, `tu64`, `lp`, TLV stream, entry list, flag, Key, Signature, `b64u` and empty. In addition:
+
+| Notation | Meaning |
+| --- | --- |
+| Point | A secp256k1 point in SEC1 compressed form: 33 bytes, first byte `02` or `03`. The point at infinity has no encoding and is never valid |
+| `G`, `n` | The secp256k1 generator and group order |
+| `hash_to_curve(x)` | The NUT-00 map from a byte string to a point |
+| `hex(x)` | Lowercase hexadecimal, two characters per byte |
+| Keyset ID | The NUT-02 keyset ID of version `01`: 33 bytes, the byte `01` followed by a SHA-256 digest. v0.4 calls it the version-2 ID |
+| `a`, `A` | The private and public key of one keyset for one amount, `A = a·G` |
+| NUT-xx | The Cashu specification of that number in the `cashubtc/nuts` repository |
+
+### 2.2 Terms
+
+| Term | Meaning |
+| --- | --- |
+| Issuer | The operator's Cashu-style mint. It signs notes for its own origin only, and is the only party that accepts them |
+| BNAP keyset | A Cashu keyset (NUT-01, NUT-02) whose keys sign notes and nothing else |
+| Note | A Cashu proof `{id, amount, secret, C}` whose secret is `hex(K)` (section 4) |
+| Note key | The private key `k_n` of a note and its x-only public key `K` |
+| `Y` | `hash_to_curve(secret)`, the note's single-use ID |
+| Value | What `verify` reports: the sats the credential brings, after input fees (6.3) |
+| Change | `value - charged` at settlement, returned as signed outputs (section 7) |
+| Fund quote | A NUT-23 BOLT11 mint quote locked to a client key (NUT-20) and redeemed inside a credential (section 8) |
+
+### 2.3 Hash tags
+
+This document defines one tagged hash, `H_"bnap:notes/mint"` (8.5). Its tag starts with the scheme ID, so it can never equal a socket tag, which all start with `bnap/`.
+
+## 3. Body and witness
+
+A notes credential is the `pay` record of a socket Credential (draft-00 5.1) with scheme `bnap:notes`, a `body` (record 2) and a `witness` (record 4). Both are TLV streams. The body carries everything the gate verifies except signatures over the Digest; the witness carries those signatures (draft-00 5.1). The Digest covers `H(body)`; nothing covers the witness, which is why it only holds signatures over the Digest.
+
+### 3.1 Body records
+
+| Type | Name | Value | Presence |
+| --- | --- | --- | --- |
+| 0 | inputs | Entry list of input entries (3.2), sorted by `key`, strictly ascending bytewise | When the credential spends notes |
+| 2 | outputs | Entry list of output entries (3.3), in the client's order | When `value` > 0 (6.3) |
+| 4 | fund | UTF-8 quote ID of a paid NUT-23 BOLT11 mint quote, 1 to 64 bytes | When the credential redeems a fund quote (8.4) |
+
+A body MUST hold `inputs`, `fund`, or both.
+
+### 3.2 Input entries
+
+An input entry is one note, as a nested stream:
+
+| Type | Name | Value |
+| --- | --- | --- |
+| 0 | keyset | 33 bytes: the full keyset ID. Required |
+| 2 | amount | tu64: a power of two, at least 1, in sat. Required |
+| 4 | key | Key: `K`, 32 bytes. The note's secret is `hex(K)`. Required |
+| 6 | C | Point: the note's unblinded signature. Required |
+
+The body carries `K`, not the secret, because the secret is a fixed function of `K` (4.1); the gate rebuilds the secret and `Y` itself. Inputs never carry a DLEQ proof or a blinding factor (4.2).
+
+### 3.3 Output entries
+
+An output entry is one Cashu blinded message, as a nested stream:
+
+| Type | Name | Value |
+| --- | --- | --- |
+| 0 | keyset | 33 bytes: the full ID of a keyset the offer lists as active (5.2). Required |
+| 2 | amount | tu64: a power of two, at least 1, in sat. Required |
+| 4 | blinded | Point: `B'`, the NUT-00 blinded message. Required |
+
+Outputs serve both as change and as refund (section 7). A client SHOULD list them in ascending amount order (provisional), which the canonical ladder of 6.3 already is.
+
+### 3.4 Witness records
+
+| Type | Name | Value | Presence |
+| --- | --- | --- | --- |
+| 0 | input\_sigs | `64 × m` bytes, where m is the number of inputs: the Signature by each input's `K` over the Digest, in input order | When the body holds `inputs` |
+| 2 | fund\_sig | Signature over the Digest by the private key of the fund quote's NUT-20 `pubkey` | When the body holds `fund` |
+
+Each signature is a BIP-340 signature over the 32-byte Digest of draft-00 5.2. `fund_sig` verifies under the x-only form of the quote's 33-byte compressed `pubkey`, that is its last 32 bytes. One signature is made per key; signatures are never aggregated (4.2).
+
+### 3.5 Canonical form
+
+Draft-00 5.1 requires a scheme to reject a body that contains any byte it does not verify. The body and the witness MUST therefore be rejected with `bnap:notes/NON_CANONICAL` (section 13) when any of these holds:
+
+- a framing error: a truncated record or entry, a non-minimal BigSize or tu64, types not strictly increasing, or bytes left over;
+- a record type not listed in 3.1 to 3.4, even or odd. The even/odd rule of draft-00 section 2 governs socket streams; inside a notes body or witness every unknown record is rejected, GREASE included (provisional reading: a client puts its GREASE in the socket streams, never in a scheme body);
+- a record of the wrong length, or with an empty value. No notes record is a flag, and every tu64 in a body is at least 1, so an empty value is never valid here;
+- a Point that is not a valid compressed point on secp256k1, or a `key` that is not a valid x-only key (its value is at least p, or no point has that x coordinate);
+- inputs not in strictly ascending order of `key`, which also rules out the same `K` twice;
+- two outputs with the same `blinded` point;
+- a witness whose records do not match the body: `input_sigs` present without `inputs`, absent with them, or not exactly 64 bytes per input; `fund_sig` present without `fund`, or absent with it.
+
+A body or witness that passes these checks has exactly one encoding.
+
+### 3.6 Sizes
+
+The pay entry parameters cap the counts (5.1): `max_inputs` and `max_outputs`, each 16 by default (provisional). An input entry takes about 110 bytes on the wire, its length prefix included, and an output entry about 75. At the defaults, a body with 16 inputs, 16 outputs and a 36-byte quote ID is about 3.0 KB and its witness about 1.1 KB, and a credential that names its offer by `offer_id` and carries a binding is about 4.2 KB, 5,562 base64url characters. That fits the HTTP carrier's credential cap of 9,216 bytes (DECISIONS row 30) with room for a 4,096-byte offer inline in most cases; clients SHOULD still send `offer_id` where draft-00 5.1 allows it. A 1-input credential with the 11-output ladder of the draft-00 10.3 example is about 1.1 KB.
+
+## 4. Notes: the Cashu profile
+
+### 4.1 Note format
+
+A Note is a Cashu proof whose secret is the hexadecimal encoding of a public key `K`, so only the holder of `K`'s private key can spend it. Everything else about the note is Cashu as the NUTs specify it.
+
+```
+k_n, r  = NUT-13 derivation (section 12): seed, keyset ID, counter, derivation types 0x02 and 0x01
+K       = x-only public key of k_n (BIP-340), 32 bytes
+secret  = hex(K), 64 ASCII characters
+Y       = hash_to_curve(UTF-8 bytes of secret)              NUT-00
+B'      = Y + r·G                                            sent as an output
+C'      = a·B', with a NUT-12 DLEQ proof (e, s)              returned by the issuer
+C       = C' - r·A                                           the unblinded signature
+Note    = {id: keyset ID, amount, secret, C}                 a valid NUT-00 proof
+witness = Signature by k_n over the socket Digest            one per note, per spend
+```
+
+A wallet MAY store notes as ordinary Cashu proofs, for example in a NUT-00 V4 token, but a note is not transferable: spending it also needs `k_n`.
+
+### 4.2 Rules beyond Cashu
+
+- **Spends need the key.** An issuer MUST accept its notes only inside a `bnap:notes` credential with a valid witness, never through a NUT-03 swap or a NUT-05 melt: without the witness rule, `hex(K)` reads to Cashu as an unlocked secret.
+- **Key isolation.** BNAP keysets MUST NOT be served by a mint that accepts plain swaps or melts for them. The issuer MUST refuse every NUT-03 and NUT-05 request whose inputs belong to a BNAP keyset, and SHOULD mark NUT-05 as disabled in its NUT-06 info. A BNAP key never appears in any other keyset. NUT-04 minting (8.5), NUT-07 state checks and NUT-09 restore are served as section 12 says.
+- **Keyset IDs.** Bodies, parameters and derivation all use the full 33-byte keyset ID. The 8-byte short ID never appears in a notes body (provisional; v0.4 allowed it on the wire).
+- **Unit.** Every BNAP keyset has unit `sat`, and the notes pay entry has unit `sat`.
+- **Final expiry.** Every BNAP keyset MUST publish a `final_expiry` (NUT-02) (provisional; without one, draft-00 6.2 would keep its spend records forever).
+- **No signature aggregation.** One BIP-340 signature per `K`. Batch verification is fine. Buying a note never proves knowledge of `k_n`, so a summed key could steal another holder's note.
+- **Denominations.** Amounts are powers of two. A wallet uses each `K` once, at one origin.
+- **Outputs.** Every `B'` is a valid point other than infinity. A `B'` the issuer has signed before is rejected with `bnap:notes/OUTPUT_REUSED` (6.2, step 6); a replay of the same credential gets the stored response instead (draft-00 6.4).
+- **DLEQ.** The issuer returns a NUT-12 DLEQ proof with every blind signature, made with NUT-12's deterministic nonce, which this scheme makes a MUST (7.4). Clients never send a DLEQ proof or a blinding factor to the issuer, because either would link a spend to the purchase.
+
+## 5. Offer parameters
+
+### 5.1 The pay entry
+
+A `bnap:notes` pay entry (draft-00 4.1) has unit `sat`. Its `params` record (pay entry type 8) is a TLV stream:
+
+| Type | Name | Value | Presence |
+| --- | --- | --- | --- |
+| 0 | issuer | UTF-8: the absolute `https` URL of the issuer's Cashu API base, on the origin the offer came from | Required |
+| 2 | keysets | Entry list of keyset entries (5.2), sorted by `id`, strictly ascending | Required, at least one entry marked `active` |
+| 4 | max\_inputs | tu64, at least 1; 16 when absent | Optional |
+| 6 | max\_outputs | tu64, at least 1; 16 when absent | Optional |
+| 8 | max\_fund | tu64, in sat: the gate accepts funding requests (8.1) on this route up to this amount | When the route offers funding inside the 402 |
+| 10 | fund\_quote | Nested stream (5.3): a quote made for this client | Exact-scope offers only |
+
+The parameters are bytes inside a signed offer, so `offer_sig` and the MAC cover them (draft-00 4.2) and they follow the even/odd rule of draft-00 section 2: a client ignores an unknown odd record and treats the pay entry as unusable if it meets an unknown even one (provisional; draft-00 leaves the encoding of `params` to the scheme). A gate never builds a record outside this table.
+
+### 5.2 Keyset entries
+
+| Type | Name | Value |
+| --- | --- | --- |
+| 0 | id | 33 bytes: the keyset ID. Required |
+| 2 | input\_fee\_ppk | tu64: the keyset's NUT-02 `input_fee_ppk`; 0 when absent |
+| 4 | active | Flag: the keyset signs outputs |
+
+`keysets` lists the BNAP keysets this offer accepts for inputs. Each is not revoked, and its `final_expiry` is later than the offer's `expires` plus 60 seconds. Entries marked `active` are the keysets the gate signs outputs on. `input_fee_ppk` MUST equal the fee the keyset publishes through NUT-02; it is in the offer so that a client holding only the offer can compute its value exactly (draft-00 7: the offer is the quote).
+
+A client takes keyset IDs, fees and the `active` flag from the offer, and the keys themselves from the issuer's NUT-01 and NUT-02 endpoints at `issuer`. It MUST recompute each keyset ID from the keys it fetched (NUT-02) and MUST NOT use a keyset whose recomputed ID differs from the offer's.
+
+### 5.3 The fund quote
+
+| Type | Name | Value |
+| --- | --- | --- |
+| 0 | quote | UTF-8 quote ID, 1 to 64 bytes. Required |
+| 2 | request | UTF-8: the quote's BOLT11 invoice. Required |
+| 4 | amount | tu64, in sat: the quote amount. Required |
+| 6 | expiry | tu64: the Unix time until which the invoice can be paid. Required |
+| 8 | pubkey | 33 bytes: the compressed NUT-20 key the client sent (8.1). Required |
+
+These are the NUT-23 quote fields a client needs, so it can pay from the 402 without another round trip. Inside the offer, `offer_sig` authenticates them.
+
+### 5.4 Offer rules
+
+- `bnap:notes` is binding class S, so it MAY appear in route-scope and in exact-scope offers (draft-00 4.3), and its refund is atomic, so it MAY appear in metered offers (draft-00 7).
+- `fund_quote` MUST appear only in exact-scope offers, because a route-scope offer is the same for every client (draft-00 5.1) (provisional).
+- A gate MUST NOT put a `fund_quote` in an offer for a route whose `require` sets `link-payment` to `unlinkable`, because a credential that redeems it is linkable to the payment (section 14) (provisional).
+- A gate MAY cache an exact-scope offer that carries a `fund_quote` as it caches offers with natives, so that the client can send `offer_id`; when it does not, the client sends the offer inline (provisional; draft-00 5.1 names only offers with natives).
+- The notes pay entry carries no native record: `bnap:notes` defines no native artifact.
+
+## 6. Verification
+
+### 6.1 What verify gets
+
+The gate calls the scheme's `verify` only after the offer checks of draft-00 4.4, and passes it the pay body and witness, the Digest the gate computed (draft-00 5.2), the chosen pay entry (amount, unit and parameters), the current time, read access to the issuer's keyset, signed-output and quote tables, and the signer's check of unblinded notes. `verify` has no side effects: it writes nothing to any store.
+
+### 6.2 Checks
+
+The scheme runs these checks in this order, cheapest first. The first failure ends verification with socket code BAD\_CREDENTIAL (10) and the `scheme_code` shown (section 13).
+
+1. **Form.** The body and witness pass 3.5 (`NON_CANONICAL`). The body holds `inputs` or `fund` (`EMPTY`). There are at most `max_inputs` inputs and at most `max_outputs` outputs (`LIMIT`).
+2. **Keysets.** Every input's keyset is listed in the offer's `keysets`, is known to the issuer, is not revoked, and `now` is before its `final_expiry`. Every output's keyset is listed with `active` and is not revoked (`UNKNOWN_KEYSET`). The offer can only narrow what the issuer's live table allows: a keyset revoked after the offer was made is refused.
+3. **Amounts.** Every amount is a power of two for which its keyset has a key (`BAD_AMOUNT`).
+4. **Fund.** If the body holds `fund`, the quote exists, has method `bolt11` and unit `sat`, carries a NUT-20 `pubkey`, is paid in full and has issued nothing (`QUOTE_UNPAID`).
+5. **Value and outputs.** The value of 6.3 is defined, and the outputs form a complete ladder that covers it (`BAD_AMOUNT` or `BAD_OUTPUTS`).
+6. **Fresh outputs.** No output's `blinded` point is in the issuer's signed-output table (`OUTPUT_REUSED`).
+7. **Witness.** The i-th signature of `input_sigs` verifies under the i-th input's `K` over the Digest, and `fund_sig` verifies under the quote's `pubkey` (`BAD_SIGNATURE`).
+8. **Notes.** For every input, `C = a·hash_to_curve(hex(K))` for the key `a` of its keyset and amount, checked by the signer (`BAD_SIGNATURE`).
+
+The scheme does not compare the value with the price: the socket does that after pricing and answers UNDERPAID (draft-00 7).
+
+### 6.3 Value and the output ladder
+
+```
+I     = sum of the input amounts
+F     = the fund quote's amount, or 0 without fund
+fee   = (sum over the inputs of their keyset's input_fee_ppk + 999) div 1000     NUT-02; the fund pays no fee
+value = I + F - fee
+```
+
+All arithmetic is checked unsigned 64-bit. An overflow, or `fee > I + F`, is `BAD_AMOUNT`.
+
+**Ladder rule.** Sort the output amounts in ascending order, `a₁ ≤ a₂ ≤ … ≤ aₖ`. The outputs form a **complete ladder** when every `aᵢ ≤ 1 + (a₁ + … + aᵢ₋₁)`, which for powers of two means every amount from 0 to their total is the sum of some of them. The outputs MUST form a complete ladder whose total is at least `value`; otherwise the result is `BAD_OUTPUTS`. When `value` is 0 the body MAY omit `outputs`. Because any change from 0 to `value` can then be formed exactly, the gate never keeps change the client meant to get back, and a FAILED outcome always refunds the whole value (section 7) (provisional; v0.4 used separate exact change and refund lists, which a charge known only at settlement cannot use).
+
+**Canonical ladder.** A client SHOULD send exactly one output of each amount 1, 2, 4, …, 2^(b-1), in that order, where b is the bit length of `value`, so that every wallet sends the same outputs for the same value (provisional). For the draft-00 10.3 example, a value of 1,680 sat gives b = 11 and the outputs 1 to 1,024, 2,047 sat in total. At the default `max_outputs` of 16, one credential carries a value of at most 65,535 sat.
+
+### 6.4 What verify returns
+
+- **Local IDs:** the `Y` of each input, as a 33-byte compressed point, under the use model `single`. The gate turns each into `UseId = H_"bnap/use"(lp("bnap:notes") ‖ Y)` (draft-00 6.1).
+- **Rail references:** none for notes. A body with `fund` adds one: rail kind `ln` and the payment hash of the quote's invoice. The operator's rail confirms the payment and returns the canonical bytes, the 32-byte payment hash, from which the gate computes the RailId and commits it with the UseIds (draft-00 6.1, 6.3). If the rail reports the payment unpaid, the result is BAD\_CREDENTIAL with `bnap:notes/QUOTE_UNPAID`, and if the rail cannot be reached, UNAVAILABLE (provisional; draft-00 does not name the code for a failed rail confirmation).
+- **Value:** `value` of 6.3, in sat.
+
+Outputs and quote IDs yield no local ID (provisional). The RailId already makes a fund quote single-use across credentials and NUT-04 minting (8.5), and signing a `B'` twice harms only the client who reused it (7.4).
+
+## 7. Settlement: change and refund
+
+### 7.1 The change cap
+
+When the scheme's `settle` runs, the socket has fixed `charged` (draft-00 6.4, 7): the effective price for a non-metered offer, `min(price(⌈units × rate / 1000⌉), price(amount))` for a metered one, and 0 for a FAILED outcome (provisional reading: draft-00 8.1 sets `charged` to 0 "when nothing was charged", and a FAILED action charges nothing). Admission required `value ≥ price(amount)`, and `charged` never exceeds `price(amount)`, so
+
+```
+change = value - charged,        0 ≤ change ≤ value ≤ total of the outputs
+```
+
+The scheme signs outputs worth exactly `change`. The operator-trusted signer enforces the same cap on its own and refuses to sign more than `value - charged` (the `CappedSigner` of the v0.5.1 overview). Input fees are kept in both outcomes.
+
+### 7.2 Selecting the outputs
+
+```
+select(outputs, change):
+  r = change; S = {}
+  for i in the output indices, by amount descending, then by index ascending:
+      if amount(i) ≤ r:  S = S ∪ {i};  r = r - amount(i)
+  return S                            r is 0 here, by the ladder rule of 6.3
+```
+
+On a complete power-of-two ladder this greedy rule always reaches exactly `change`. OK and FAILED outcomes use the same rule; a FAILED outcome, with `charged` 0, returns the whole value. In the draft-00 10.3 example the value is 1,680 sat and the charge 340 sat, so the change is 1,340 sat and the scheme signs the outputs of 1,024, 256, 32, 16, 8 and 4 sat.
+
+### 7.3 Scheme result
+
+The scheme's `scheme_result` (Response record 16, draft-00 8.1) is a TLV stream:
+
+| Type | Name | Value | Presence |
+| --- | --- | --- | --- |
+| 0 | signatures | Entry list of signature entries, one per signed output, in ascending `index` order | When change > 0 |
+
+A signature entry:
+
+| Type | Name | Value |
+| --- | --- | --- |
+| 0 | index | tu64: the zero-based index of the output in the body. Required |
+| 2 | C\_ | Point: `C' = a·B'` for that output's keyset and amount. Required |
+| 4 | e | 32 bytes: the NUT-12 DLEQ challenge. Required |
+| 6 | s | 32 bytes: the NUT-12 DLEQ response. Required |
+
+When the change is 0 the scheme returns empty bytes and the Response omits record 16 (provisional). The Response's ack signs the whole `scheme_result` (draft-00 8.1), so a wrong change is attributable.
+
+The client knows `value` from its own body and the offer, and `charged` from the Response, so it recomputes `select` itself. It MUST check that the signed indices equal its own result, MUST verify every DLEQ proof against the keyset key `A` for that amount (NUT-12), and only then unblinds `C = C' - r·A`. A mismatch is the operator's fault, and the signed Response is the evidence.
+
+### 7.4 Deterministic signing and the signed-output table
+
+Draft-00 6.4 requires `settle` to be deterministic. A blind signature `a·B'` already is. The issuer MUST make every DLEQ proof with NUT-12's deterministic nonce, which NUT-12 itself only recommends; with it, the same verified credential, outcome and charge always give byte-identical `scheme_result`.
+
+The issuer records every signed output, with its keyset, amount, `C'` and DLEQ proof, in a signed-output table that it keeps until the output keyset's final expiry, as NUT-09 requires. These records MUST be durable no later than the outcome write of draft-00 6.4, and therefore before the Response is sent. If a `B'` was signed meanwhile under another credential or mint request, `settle` still signs it and does not fail, and the table keeps the first record (provisional). The two signatures share one `Y`, so at most one of them can ever be spent: the client that reused the output loses value, and the operator loses nothing.
+
+### 7.5 Replays and timeouts
+
+Replays are the socket's (draft-00 6.4): a replay returns the stored `scheme_result`, and the scheme MUST NOT sign anything beyond it. When an outcome is still PENDING after `pending_timeout`, the socket moves it to FAILED with charge 0. The refund needs the client's outputs, which the outcome record does not keep, so it is computed when the client replays the credential: the gate finds the FAILED outcome without a `scheme_result`, calls `settle` for FAILED with charge 0, stores the result once with a conditional write, and returns it (provisional reading of draft-00 6.4, which relies on `settle` being deterministic but does not say when the timeout refund is computed). A client whose request timed out therefore replays it to collect its refund.
+
+## 8. Funding inside the 402
+
+Buying credit is Cashu's Lightning mint flow, used verbatim: a NUT-23 BOLT11 quote locked to a client key (NUT-20), paid, then minted with NUT-04. BOLT11 is mandatory, because the issuer is always online and every payer stack accepts it. BOLT12 through NUT-25 is optional and is minted through NUT-25 only; a body's `fund` redeems BOLT11 quotes only (provisional). This section adds one shortcut: a first-time client can get the quote inside the 402 and redeem it inside the paid request, so it funds and acts in one round trip.
+
+### 8.1 Asking for a quote
+
+On the HTTP carrier, a client asks for funding by sending the request field `BNAP-Fund` with the request that will get the 402 (provisional; draft-00 section 13 does not list this field, so it needs registering):
+
+```
+BNAP-Fund: amount=2100, pubkey="02c4…"
+```
+
+The field is an RFC 9651 Dictionary. `amount` is an Integer, the most the client will pay, in sat. `pubkey` is a String of 66 lowercase hex characters, a compressed secp256k1 key the client made fresh for this quote. Other members are ignored. Other carriers define no such member yet; their clients buy credit through NUT-23 and NUT-04 directly (8.5).
+
+### 8.2 Making the quote
+
+A gate that receives `BNAP-Fund` on a route whose notes pay entry carries `max_fund`:
+
+- MAY ignore it, and then sends its offers without a `fund_quote`;
+- otherwise creates a NUT-23 BOLT11 quote for `min(amount, max_fund)` sat, locked to `pubkey` (NUT-20), with a quote ID of at most 64 bytes, and puts it in the `fund_quote` of an exact-scope offer for this request (5.3, 5.4). It MAY also send its route-scope offer, without the quote, in the same 402;
+- MUST create at most one quote per offer nonce and MUST rate-limit quote creation per client address (provisional, following DECISIONS row 24 for native challenges), and SHOULD bound the open, unpaid quotes per address;
+- MUST NOT create a quote for a request without `BNAP-Fund`. A scraper gets an offer, never an invoice;
+- MAY decline amounts below a minimum top-up of its choosing, in which case it sends no quote. v0.4 suggested `max(4 × price, 21)` sat, because the operator's inbound liquidity, not routing, is the real cost of a small payment.
+
+### 8.3 Paying the quote
+
+Before paying, a client MUST check that the offer passes draft-00 4.4, that `pubkey` is the key it sent, that `amount` is at most what it asked for and equals the amount of the BOLT11 invoice in `request`, and that the invoice has not expired. It MUST save the quote ID, the quote key and the offer before it pays, so that a request that fails can still mint the paid quote through NUT-04 (8.5). It then pays the invoice through any Lightning pay source, such as an NWC connection.
+
+### 8.4 Redeeming the quote in a credential
+
+The client puts the quote ID in the body's `fund` and signs the Digest with the quote key as `fund_sig`. The quote may be redeemed with any offer that lists `bnap:notes`, not only the one that carried it, and alongside notes or alone. It adds its amount to the value with no input fee (6.3). Verification checks the quote (6.2, step 4) and returns its payment as a rail reference (6.4), and the socket commits the RailId in the same transaction as the notes' UseIds (draft-00 6.3).
+
+If the request fails before commit, nothing is consumed and the quote stays mintable through NUT-04. After commit the quote counts as issued, whatever the outcome: on OK the change comes back as notes, and on FAILED the whole value, the quote's amount included, comes back as notes (7.2).
+
+A credential that redeems a quote links that one action to the Lightning payment. Notes received as change are unlinkable. A client that needs every action unlinkable buys credit through NUT-04 first and spends only notes.
+
+### 8.5 Minting through NUT-04
+
+The issuer serves NUT-04 BOLT11 minting (`POST /v1/mint/bolt11`) for BNAP keysets, the ISSUE of v0.4. A quote for a BNAP keyset MUST carry a NUT-20 `pubkey`, and the mint request MUST carry a valid NUT-20 signature (provisional; NUT-20 makes both optional). Outputs follow NUT-04: they sum to the quote amount, are on active BNAP keysets, are powers of two, and no `B'` was signed before.
+
+Draft-00 6.1 requires that "a scheme that mints credit from a payment … MUST have the gate commit that payment's RailId when it mints". The issuer therefore uses the gate's use store, the same one the socket commits to, as follows (provisional):
+
+```
+rk_mint = H_"bnap:notes/mint"( lp(quote ID) ‖ BigSize(k) ‖ lp(output₁) ‖ … ‖ lp(outputₖ) )
+          outputᵢ = the output entry of 3.3 built from the i-th blinded message of the mint request
+
+mint(quote, outputs):
+  confirm through the rail that the quote's invoice is paid      otherwise the NUT-04 "not paid" error
+  sigs = blind signatures and DLEQ proofs for outputs            deterministic, as in 7.4
+  in one serializable transaction:
+      if used[RailId] is absent:  used[RailId] = rk_mint; record sigs in the signed-output table
+      elif used[RailId] = rk_mint: sigs = the stored records    a retry of the same mint request
+      else:                        abort                         NUT-04 error for an issued quote
+  return sigs
+```
+
+A mint commit has no outcome record and no PENDING state, because signing comes before the transaction and the transaction is the whole operation. A retry with the same quote and outputs gets the same signatures, as NUT-19 cached responses would give. The issuer keeps the RailId record at least as long as the quote record.
+
+### 8.6 Quote state
+
+The use store is the authority on whether a quote has issued: a quote is issued exactly when its RailId is committed, by a credential or by a mint. The issuer's NUT-23 quote check MUST then report `amount_issued` equal to `amount`, and the deprecated `state` as `ISSUED`.
+
+## 9. Input fees
+
+Input fees follow NUT-02: each input contributes its keyset's `input_fee_ppk`, and the fee is the sum rounded up to whole sats (6.3). The offer repeats each keyset's fee (5.2). The fund quote pays no fee. Fees are kept on OK and on FAILED. Fees exist so that free swaps cannot bloat the store, so an operator that offers a swap route at price 0 (section 11) SHOULD set a nonzero `input_fee_ppk` on its keysets.
+
+## 10. Keysets and rotation
+
+- **Lifecycle.** A keyset is published, with its keys served but not active, at least 30 days before it signs anything. It then signs outputs for about 3 months, then accepts inputs only, and reaches its `final_expiry` about 15 months after it started signing. After `final_expiry` it is never accepted again.
+- **Standby.** The operator always keeps at least one published keyset that is not yet active, so that a compromised keyset can be replaced at once.
+- **Revocation.** A compromised keyset leaves the `keysets` of every new offer and the issuer's live table at once, and inputs and outputs on it are refused from then on (`UNKNOWN_KEYSET`). The operator cannot tell honest notes on that keyset from forged ones, so their holders lose them; this is an accepted residual risk (section 17).
+- **Retention.** The single-use records of notes stay in the use store until their keyset's `final_expiry`, which is how long draft-00 6.2 requires for a note. Signed-output records stay until the output keyset's `final_expiry` (NUT-09). After that the issuer MAY delete both, as NUT-02 allows.
+- **Offers and expiry.** An offer lists only keysets whose `final_expiry` is later than its `expires` plus 60 seconds (5.2). The issuer MUST keep signing on a keyset for as long as an unexpired offer lists it as `active`, unless the keyset is revoked.
+- **Consistent keys.** Clients compare the full key list of each keyset from a second vantage point, such as another network path or a published mirror, and SHOULD NOT accept change on a keyset whose keys differ between them; this catches keys made to tag one user. The 30-day publication rule gives them time to do so.
+- **Wallets.** A wallet SHOULD swap notes on a keyset that is within 30 days of its `final_expiry` into an active keyset (section 11). An operator announces retirement or shutdown at least 30 days ahead through the keyset's `final_expiry`.
+
+## 11. Swaps
+
+A swap re-denominates notes, or moves them to an active keyset. It is an ordinary BNAP request on a route priced at 0; the body and witness are as for any other credential, and the whole value comes back as change through the outputs (section 7). The operator SHOULD list such a route in its manifest with id `notes-swap`, for example `{"id": "notes-swap", "match": "POST /bnap/notes/swap", "scope": "route", "price": {"sat": 0}, "pay": ["bnap:notes"]}`, and the gate answers it itself, with status 200, no content and `BNAP-Receipt` (provisional). A wallet finds the route in the manifest by its id. The swap's scope is the carrier's ordinary action scope (draft-00 10.1); v0.4's `H_"bnap/scope/swap"(origin)` and its info-endpoint swap URL are gone. A plain NUT-03 swap is never accepted (4.2).
+
+## 12. Seed recovery
+
+### 12.1 Derivation
+
+A wallet holds one BIP-39 seed. Note keys and blinding factors come from the NUT-13 derivation for keysets with version-01 IDs:
+
+```
+d(type)  = HMAC-SHA256(seed, "Cashu_KDF_HMAC_SHA256" ‖ keyset ID ‖ counter as 8 bytes big-endian ‖ type)
+k_n      = int(d(0x02)) mod n          the note key; derivation type 0x02 (provisional)
+r        = int(d(0x01)) mod n          the blinding factor, as NUT-13 defines it
+```
+
+NUT-13 assigns types `0x00` (secret) and `0x01` (blinding factor). Type `0x02` for the note key is not assigned yet and is to be requested from the Cashu maintainers; until then this document uses it as written (provisional). Type `0x00` is not used, because a note's secret is `hex(K)`. If `k_n` or `r` is 0, the wallet skips that counter value. Before the test vectors of section 18 are frozen, this layout MUST be checked against the NUT-13 test vectors.
+
+**Counters.** Counters are per keyset. The top 16 bits of the 64-bit counter name a device or agent slot, and the low 48 bits count within it, so two devices that share a seed never derive the same key (provisional; v0.4 split the counter the same way without fixing its width). Every output consumes one counter value. A wallet MUST NOT reuse a counter value once the `B'` derived from it has been sent in any credential or mint request, signed or not, because the same `B'` in two requests links them.
+
+### 12.2 Restore
+
+The issuer MUST serve NUT-09 restore and NUT-07 state checks for BNAP keysets:
+
+- **NUT-09** answers from the signed-output table (7.4, 8.5).
+- **NUT-07** answers from the gate's use store: a `Y` whose UseId is committed is `PENDING` while its outcome is PENDING and `SPENT` otherwise, even after the outcome record is deleted, and every other `Y` is `UNSPENT`.
+
+To restore, a wallet takes the sites and slots recorded in its backup and, for each keyset of each issuer (inactive keysets inside their final expiry included), regenerates outputs in batches of 100 counter values, asks the issuer to restore them, and stops after three consecutive batches come back empty (NUT-13). It unblinds what comes back and checks each note's `Y` with NUT-07.
+
+**Gaps.** Unsigned outputs leave gaps in the counter sequence: a credential whose change is 0 leaves its whole ladder unsigned, up to `max_outputs` values. A long run of such credentials would hide later notes from the three-empty-batches rule. A wallet MUST therefore record, in its backup, the highest counter value it has used per keyset and slot, at least every time that value has advanced by 100 since the last record, and a restore MUST scan at least up to the recorded value before applying the gap rule (provisional).
+
+**Backup.** The wallet's site list, with each origin's issuer URL, keysets, slots and counters, is backed up encrypted, as Cashu wallets back up their mint lists. The encryption is the wallet's choice.
+
+## 13. Errors
+
+### 13.1 Scheme codes
+
+Every scheme error is sent with socket code BAD\_CREDENTIAL (10, HTTP 402) and one of these `scheme_code` values (draft-00 8.2):
+
+| scheme\_code | Meaning | Client action |
+| --- | --- | --- |
+| `bnap:notes/NON_CANONICAL` | The body or witness breaks 3.5 | Fix the encoder |
+| `bnap:notes/EMPTY` | The body has neither inputs nor fund | Add notes or a fund quote |
+| `bnap:notes/LIMIT` | More inputs or outputs than `max_inputs` or `max_outputs` | Swap into fewer notes first |
+| `bnap:notes/UNKNOWN_KEYSET` | An input keyset is not in the offer, unknown, revoked or past its final expiry, or an output keyset is not active | Refresh the offer and keysets; swap old notes |
+| `bnap:notes/BAD_AMOUNT` | An amount is not a power of two with a key, the arithmetic overflows, or the fees exceed inputs plus fund | Fix the amounts |
+| `bnap:notes/BAD_OUTPUTS` | The outputs are not a complete ladder covering the value | Send the canonical ladder (6.3) |
+| `bnap:notes/OUTPUT_REUSED` | A blinded output was signed before | Derive fresh outputs |
+| `bnap:notes/BAD_SIGNATURE` | A note, an input signature or the fund signature failed | Drop the bad input, or check the wallet's keys |
+| `bnap:notes/QUOTE_UNPAID` | The fund quote is unknown, unpaid, already issued, not BOLT11 in sat, or has no NUT-20 key, or the rail does not confirm its payment | Pay it, wait for the payment, or drop it |
+
+A rail that cannot be reached gives UNAVAILABLE (15), never admission (draft-00 12).
+
+### 13.2 The v0.4 codes in draft-00
+
+| v0.4 code | Now |
+| --- | --- |
+| `VERSION` | Socket VERSION (1) |
+| `MALFORMED` | Socket MALFORMED (2) for the socket streams; `bnap:notes/NON_CANONICAL` or `bnap:notes/EMPTY` for the body |
+| `TOO_LARGE` | Socket TOO\_LARGE (3) for sizes; `bnap:notes/LIMIT` for counts |
+| `UNKNOWN_KEYSET` | `bnap:notes/UNKNOWN_KEYSET` |
+| `UNIT_MISMATCH` | `bnap:notes/UNKNOWN_KEYSET`: only `sat` keysets are ever listed (provisional) |
+| `BAD_CHALLENGE` | Socket BAD\_OFFER (4) |
+| `STALE` | Socket STALE (5) |
+| `WRONG_SCOPE` | Socket WRONG\_SCOPE (6); a binding mismatch is BINDING (11) |
+| `WRONG_AMOUNT` | Socket UNDERPAID (9) when the value is below the price; `bnap:notes/BAD_OUTPUTS` when the outputs do not fit |
+| `BAD_SIGNATURE` | `bnap:notes/BAD_SIGNATURE` |
+| `OUTPUT_REUSED` | `bnap:notes/OUTPUT_REUSED` |
+| `SPENT` | Socket SPENT (12) |
+| `QUOTE_UNPAID` | `bnap:notes/QUOTE_UNPAID` |
+| `PENDING` | Socket PENDING (13) |
+| `RATE_LIMITED` | Socket RATE\_LIMITED (14) |
+
+v0.4 said error responses SHOULD carry an operator signature. Draft-00 errors are never signed (draft-00 8.2), and that rule is dropped.
+
+## 14. Registry entry and property vector
+
+The registry entry, in the form of draft-00 section 11:
+
+```toml
+[scheme."bnap:notes"]
+role        = "value"
+spec        = "https://github.com/bnap-protocol/bnap/blob/main/spec/schemes/bnap-notes-draft-00.md"
+binding     = "S"
+use         = "single"
+local_id    = "Y of each input: hash_to_curve(hex(K)), 33-byte compressed point"
+quota_id    = ""
+rail_refs   = "none for notes; kind ln, the invoice payment hash, for a redeemed fund quote and at minting"
+body        = "TLV, section 3 of the scheme spec"
+witness     = "TLV, section 3.4: one BIP-340 signature per input, plus one by the fund quote's NUT-20 key, all over the Digest"
+native      = []
+units       = ["sat"]
+refund      = "atomic"
+upto        = false
+properties  = { theft = "key-witnessed", link-payment = "unlinkable", link-actions = "unlinkable",
+                issuer = "self-issued", verify = "offline", finality = "final-on-verification",
+                custody = "operator-iou", pq = "no", maturity = "experimental" }
+conformance = ""
+```
+
+Draft-00 section 11 lists an entry only once it has a public specification, test vectors, passing conformance results and expert review. This document is the specification; `conformance` stays empty, and the entry stays unlisted, until the conformance suite has produced results for it.
+
+The property vector, weakest to strongest as the overview orders each property:
+
+| Property | Value | Note |
+| --- | --- | --- |
+| use | single | Each `Y` admits one action |
+| binding | S | The witness signs the Digest: offer, chosen schemes, extensions, bodies and TLS binding |
+| theft | key-witnessed | A note copied from a log or a proxy is useless without `k_n` |
+| link-payment | unlinkable | Notes are unlinkable from the purchase that funded them. A credential that redeems a fund quote is linkable to that payment (8.4), and the first action after a purchase can be correlated by timing |
+| link-actions | unlinkable | Blinding; one `K` per note; the canonical ladder (6.3) |
+| issuer | self-issued | The gate accepts only its own keysets |
+| verify | offline | A signer check and signature checks; the rail is asked only for a fund quote |
+| finality | final-on-verification | |
+| custody | operator-iou | Credit is the operator's promise; wallets keep balances small (section 15) |
+| refund | atomic | Change and refunds come back in the Response (section 7) |
+| pq | no | Forgery is not post-quantum; blinding keeps past spends private |
+| maturity | experimental | Until the NUTs of `nuts/` are accepted |
+
+These are the scheme's own values. The gate combines them with the rail and verifier entries into the effective vector of each pay entry (draft-00 section 11): notes funded through a card or another reversible rail are reversible and linkable to the payer.
+
+## 15. Wallet requirements
+
+A notes wallet MUST:
+
+- enforce spending caps per origin and per task in code, never in a model's prompt;
+- make a fresh NUT-20 key for every quote, run the checks of 8.3 before paying, and never pay more than it asked for in `BNAP-Fund`;
+- save the quote, its key and the offer before paying (8.3);
+- keep per-site balances small, because credit is the operator's IOU; 5,000 sat per site is the RECOMMENDED default cap;
+- use each note key once, at one origin, and never reuse a counter value (12.1);
+- send outputs that form a complete ladder covering the value (6.3);
+- check the selected outputs and every DLEQ proof before accepting change (7.3);
+- record its counters in its backup as 12.2 requires;
+- keep every Response it paid for (draft-00 8.1).
+
+A notes wallet SHOULD send the canonical ladder (6.3), send `offer_id` instead of the offer where it can (draft-00 5.1), and swap notes before their keyset's final expiry (section 10). It SHOULD include a `binding` whenever it can read its connection's `tls-exporter` value. A BINDING error means the gate cannot check the binding or the connection is intercepted; the wallet MAY retry without a binding only if it accepts that the response is then only as confidential as the credential (draft-00 6.4) (provisional; draft-00 does not say how a client learns whether a gate can check a binding).
+
+## 16. Withdrawal
+
+Withdrawal (v0.4's BNAP-W) is not part of this document. An issuer that offers no withdrawal extension MUST refuse NUT-05 melts of BNAP notes (4.2). An operator that enables one MUST, as v0.4 required, write spend records synchronously to durable, replicated storage before answering, cap withdrawals per epoch and per request, pay out only through a melt that carries notes witnesses, and keep the issuer key in a separate signer process. Paying out to arbitrary invoices moves an operator from merchant toward money transmitter, so withdrawal needs legal review in each jurisdiction.
+
+## 17. Security and privacy considerations
+
+The socket's considerations (draft-00 section 12) apply. These are the scheme's own:
+
+| Threat | Closed by |
+| --- | --- |
+| Double spend | Each `Y` committed as a single UseId, atomically and durably, before the action runs (draft-00 6.3) |
+| Note theft from logs, proxies or CDNs | A witness by `K` over the Digest |
+| Change or refund stolen by a proxy | The Digest covers the body, outputs and quote included; the outputs are blinded |
+| A fund quote redeemed twice | One RailId per payment, single, shared by credentials and NUT-04 minting (8.5) |
+| A quote swapped by a proxy | `offer_sig` covers the quote; the wallet checks its key and amount (8.3) |
+| Theft with a summed key | One signature per `K`, no aggregation |
+| Redeeming a note through a plain Cashu swap or melt | Key isolation (4.2) |
+| Mixed units or overflow | `sat` only, checked arithmetic (6.3) |
+| Bloating the store with free swaps | Per-keyset input fees (section 9) |
+| Admission minted by someone else | The gate accepts only its own keysets (6.2, step 2) |
+| The issuer links a spend to a purchase | Blinding; no DLEQ proof or blinding factor is ever presented (4.2) |
+| Keys made to tag one user | Keysets published 30 days ahead and compared from a second vantage point (section 10) |
+| Wallet fingerprinting | Powers of two, the canonical ladder, one `K` per note |
+| Linking two actions through a reused output | Counters are never reused (12.1) |
+| Lost device | Seed recovery through NUT-13, NUT-09 and NUT-07 (section 12) |
+| Invoice minting as denial of service | Funding only on `BNAP-Fund`, capped, one quote per offer nonce, rate-limited per address (8.2) |
+| Change withheld or miscounted | The deterministic selection (7.2), checked by the client against the signed Response |
+| A replay or crash paying change twice | The socket's single settle write and stored `scheme_result` (draft-00 6.4); deterministic signing (7.4) |
+
+**Output front-running.** Someone who sees a credential in transit, which the TLS binding and TLS itself make hard, can copy its `B'` values into a credential of its own. That costs it the price of its own action, and gains it nothing: it cannot unblind the signatures. If its credential settles first, the victim's credential fails verification with `OUTPUT_REUSED` before commit, consumes nothing, and is retried with fresh outputs.
+
+**Accepted residual risks:**
+
+- **Linkable funding.** A credential that redeems a fund quote is linkable to its payment, and the first action after any purchase can be correlated by timing.
+- **Small operators** can still link visitors by address, TLS fingerprint and timing. Notes are unlinkable; their holders are not anonymous.
+- **Operator credit.** An operator that disappears takes unspent credit with it. Wallets keep balances small.
+- **Store loss.** Without withdrawal, notes spent since the last durable copy of the use store can be spent again until their keyset expires, which costs free actions, never bitcoin.
+- **Key compromise.** A stolen issuer key forges notes, so the keyset is revoked and replaced at once (section 10), and honest notes on it are lost. Keys live in a separate signer process.
+- **Not post-quantum.** A quantum attacker could forge notes; blinding keeps past spends private.
+- **Restore leaks a wallet.** NUT-09 and NUT-07 requests show the issuer a set of outputs and notes that belong together, as in any Cashu wallet.
+
+## 18. Test vector requirements
+
+The `bnap:notes` vectors MUST be published, generated by a reference encoder and reproducible from the prose, before the registry entry is listed (section 14). Like the socket vectors (draft-00 section 14), they derive secret keys as SHA-256 of fixed strings, use 32 zero bytes of BIP-340 auxiliary randomness, and give every intermediate value. They MUST include:
+
+1. **Note math:** a seed, keyset ID and counter giving `k_n` (type `0x02`), `K`, the secret, `Y`, `r` (type `0x01`) and `B'`; a keyset key `a`; `C'` with its deterministic NUT-12 DLEQ proof; and `C`. The `hash_to_curve` and DLEQ steps MUST agree with the NUT-00 and NUT-12 vectors.
+2. **Offer parameters:** the `params` bytes of a route-scope pay entry with two keysets, one active and with a fee, and of an exact-scope pay entry with a `fund_quote`.
+3. **A notes credential** for the route offer of draft-00 section 14: body and witness bytes with two inputs and the canonical ladder; the Digest; the UseIds; the ReplayKey; and the whole Credential.
+4. **A funded credential:** a body with one input and a `fund`, the `fund_sig`, the RailId of the quote's payment hash, and the value.
+5. **Value and fees:** inputs on keysets with nonzero `input_fee_ppk`, showing the rounding of 6.3.
+6. **Settlement:** for the credential of item 3, the selected indices and the `scheme_result` bytes for an OK outcome with a metered charge, for an OK outcome with charge equal to the value (no change), and for a FAILED outcome; and a Response carrying each.
+7. **Minting:** `rk_mint` for a quote and two outputs (8.5).
+8. **Negative vectors**, each with the expected `scheme_code`: inputs out of order; a repeated `K`; two outputs with one `B'`; an unknown odd record in the body; a record with an empty value; a short keyset ID; a non-power-of-two amount; an incomplete ladder; a ladder whose total is below the value; fees above the inputs; `input_sigs` of the wrong length; `fund` without `fund_sig`; a witness signature over another Digest; a note whose `C` does not verify; an output keyset that is not active.
+
+The socket vectors in `vectors/vectors.json` use a placeholder notes body and a bare 64-byte witness; they test the socket's hashing, not this scheme, and are not valid notes credentials under this document.
+
+## 19. Changes from the v0.4 scheme
+
+Draft-00 wins over the v0.4 text and the overview in each of these places:
+
+| v0.4 or overview | This document | Why |
+| --- | --- | --- |
+| SPEND is a CBOR object | The notes body and witness are TLV streams inside the socket Credential (section 3) | Draft-00 5.1; DECISIONS row 31 |
+| Own Digest, `H_"bnap/spend"(SigningBody)`, and SigningBody table | The socket Digest, which covers `H(body)` (draft-00 5.2) | The socket owns the Digest |
+| Witness inside each input | All signatures in the witness record, apart from the body | Draft-00 5.1: the Digest covers bodies, never witnesses |
+| `fund = {quote, signature}` | `fund` in the body, `fund_sig` in the witness | Same reason |
+| CHALLENGE TLV with `amount`, `unit`, `keysets`, `info`, `op_key_id`, `fund_quote` | The socket Offer; `keysets`, `issuer`, limits and `fund_quote` are notes pay entry parameters (section 5) | Draft-00 section 4; the overview moves `fund_quote` into the notes offer |
+| Self-issued challenges built by the client | Gone. Draft-00 4.4 accepts offers without `mac` only when published in advance under a key the gate holds | Draft-00 4.4 |
+| Own ack over `Digest ‖ status ‖ amount ‖ signatures` | The socket Response and its ack (draft-00 8.1); the signatures travel in `scheme_result` (7.3) | The socket owns receipts |
+| Replay lookup by Y with 16-byte Digest tags | The socket's ReplayKey and outcome record (draft-00 6.3, 6.4) | The socket owns replay |
+| Amount rule: inputs + quote - fees - outputs = amount, exactly | `value ≥ price` (checked by the socket) and change of exactly `value - charged` at settlement | Draft-00 7: the charge is known only at settlement in metered offers |
+| Separate `outputs` (change) and `refund_outputs` | One list of outputs forming a complete ladder that covers the value; a deterministic subset is signed (6.3, 7.2) (provisional) | A charge fixed at settlement needs change of any size |
+| Short keyset ID allowed on the wire | Full 33-byte keyset ID only (provisional) | One encoding; no ambiguous short IDs |
+| A suite tag on every input; suites 1 to 3 reserved | No suite tag. A different construction gets its own scheme ID, as ACT does in the overview's catalogue (provisional) | Draft-00 identifies schemes by ID |
+| `Authorization: BNAP` or `BNAP-Authorization`; `Authentication-Info` | `BNAP-Credential` and `BNAP-Receipt` (draft-00 10.2) | Draft-00 10.2 |
+| HTTP scope over a normalized URI and Content-Digest | The HTTP carrier's action scope (draft-00 10.1) | Draft-00 10.1 |
+| Swap scope `H_"bnap/scope/swap"(origin)` at the info endpoint's swap URL | A price-0 manifest route (section 11) (provisional) | Draft-00 has no scheme-defined scopes |
+| A `bnap` section in the NUT-06 info endpoint with prices, limits, `max_fund`, `replay_window_s`, `op_keys`, `self_issued`, `swap` | The manifest (draft-00 9.1) for keys, limits and routes; offer parameters for the notes limits and `max_fund` | Draft-00 section 9 |
+| Error codes of the SPEND, error responses SHOULD be signed | Socket codes plus `bnap:notes/…` scheme codes; errors are unsigned (section 13) | Draft-00 8.2 |
+| FAILED returns HTTP 502 | Not defined here: draft-00 does not give an HTTP status for a FAILED outcome, and the carrier, not the scheme, would | Draft-00 10.2 |
+| Spend store: 16-byte prefix of Y with a 16-byte Digest tag | The socket's use store with full UseIds, plus the scheme's signed-output table (7.4) | Draft-00 6.3 |
+| Restore stops after `3 × max_outputs` unsigned counters | NUT-13's three empty batches of 100, plus a recorded counter in the backup (12.2) (provisional) | NUT-13; ladders can leave long gaps |
+| DLEQ nonce must be deterministic (BNAP's own rule) | NUT-12's deterministic nonce, made a MUST (7.4) | NUT-12 now defines one |
+
+## Appendix A. HTTP example (informative)
+
+A first-time agent funds and calls the metered route of draft-00 10.3 in one round trip after its first request. Byte strings are elided.
+
+```http
+POST /v1/chat/completions HTTP/1.1
+Host: api.example
+Content-Type: application/json
+BNAP-Fund: amount=2100, pubkey="02c4…"
+
+{"model":"m-1","messages":[{"role":"user","content":"hi"}],"max_tokens":256}
+
+HTTP/1.1 402 Payment Required
+WWW-Authenticate: BNAP offer="…"      route scope: bnap:notes up to 2,100 sat, 500 sat per 1,000 tokens
+WWW-Authenticate: BNAP offer="…"      exact scope, metered: bnap:notes up to 2,100 sat at 500 sat
+                                       per 1,000 tokens, with fund_quote {quote, request = "lnbc21u1…",
+                                       amount 2100, expiry, pubkey 02c4…}
+BNAP-Error: AAEBAgEQ                   (REQUIRED)
+
+(the agent checks the quote's key and amount, saves quote, key and offer, and pays through NWC)
+
+POST /v1/chat/completions HTTP/1.1
+Host: api.example
+Content-Type: application/json
+BNAP-Credential: …                     exact offer inline; pay = bnap:notes, body {fund = quote ID,
+                                       outputs = ladder 1 … 2048}, witness {fund_sig}; binding
+
+HTTP/1.1 200 OK
+Content-Type: text/event-stream
+Cache-Control: private, no-store
+
+data: {"choices":[{"delta":{"content":"Hello"}}]}
+…
+event: bnap-receipt
+data: …                                OK, 850 tokens; charged 425 sat; scheme_result signs 1,675 sat of change
+```
+
+With no attestation, the 850 tokens cost ⌈850 × 500 / 1000⌉ = 425 sat. The value is the quote's 2,100 sat, so the change is 1,675 sat, signed as the ladder outputs of 1,024, 512, 128, 8, 2 and 1 sat. Every later call spends those notes against the cached route offer, sending `offer_id`.
+
+## Appendix B. Provisional decisions
+
+Each of these is marked "(provisional)" where it is made, and each is open to owner review.
+
+| # | Where | Decision |
+| --- | --- | --- |
+| P1 | 3.1, 6.3, 7.2 | One output list, a complete power-of-two ladder covering the value, replaces v0.4's separate change and refund lists; settlement signs a greedy subset worth exactly `value - charged` |
+| P2 | 6.3 | Wallets SHOULD send the canonical ladder 1, 2, …, 2^(b-1) |
+| P3 | 3.5 | Unknown records inside a notes body or witness are rejected even when odd; GREASE belongs in socket streams |
+| P4 | 4.2 | Full 33-byte keyset IDs only, never the short ID |
+| P5 | 4.2 | Every BNAP keyset publishes a `final_expiry` |
+| P6 | 3.6, 5.1 | `max_inputs` and `max_outputs` default to 16 |
+| P7 | 5.1 | Notes parameters follow the even/odd rule |
+| P8 | 5.4 | `fund_quote` only in exact-scope offers, and never on routes requiring `link-payment = unlinkable` |
+| P9 | 5.4 | Gates may cache exact-scope offers that carry a `fund_quote` |
+| P10 | 6.4 | A rail that does not confirm a fund payment gives BAD\_CREDENTIAL with `QUOTE_UNPAID` |
+| P11 | 6.4 | Outputs and quote IDs yield no local ID; the RailId guards the quote |
+| P12 | 7.1 | A FAILED outcome has `charged` 0 and refunds the whole value |
+| P13 | 7.3 | No `scheme_result` when the change is 0 |
+| P14 | 7.4 | Settlement signs a `B'` that was signed meanwhile instead of failing |
+| P15 | 7.5 | The refund of a timed-out outcome is computed when the client replays the credential |
+| P16 | 8 | A body's `fund` redeems BOLT11 (NUT-23) quotes only; BOLT12 credit is minted through NUT-25 |
+| P17 | 8.1 | The `BNAP-Fund` request field, an RFC 9651 Dictionary, needs registering |
+| P18 | 8.2 | One quote per offer nonce and a per-address rate limit are MUST, as DECISIONS row 24 sets for natives |
+| P19 | 8.5 | BNAP quotes require a NUT-20 key; NUT-04 minting commits the RailId under `rk_mint` in one transaction |
+| P20 | 11 | Swaps use a price-0 manifest route with id `notes-swap`, answered by the gate |
+| P21 | 12.1 | Derivation type `0x02` for note keys; the counter's top 16 bits name the slot |
+| P22 | 12.2 | Wallets record their counters in the backup; restore scans at least that far |
+| P23 | 13.2 | `UNIT_MISMATCH` folds into `UNKNOWN_KEYSET` |
+| P24 | 15 | A wallet may retry without a binding after a BINDING error |
+| P25 | 19 | Suites 1 to 3 become their own scheme IDs |
