@@ -57,7 +57,7 @@ Outputs and quote IDs are not use IDs. `verify` has no side effects and runs the
 
 ### Wallet requirements (section 15, 12)
 
-NUT-13 derivation for version-01 keysets with type `0x02` for the note key and `0x01` for the blinding factor; 64-bit counter, top 16 bits = device slot; never reuse a counter; record the highest counter per keyset and slot in the backup at least every 100 values; restore in batches of 100, stop after three empty batches but never before the recorded counter.
+NUT-13 derivation for version-01 keysets with type `0x02` for the note key and `0x01` for the blinding factor; 64-bit counter, top 16 bits = device slot; never reuse a counter; record the highest counter per keyset and slot in the backup at least every 100 values; restore in batches of 100, stop after three empty batches but never before the recorded counter. TLS binding: a wallet SHOULD bind whenever it can read `tls-exporter` and MAY retry unbound after a BINDING error (section 15, P29); v0.4's "agents and native clients MUST bind" is weakened because draft-00 5.3 makes gates behind a TLS-terminating front reject bound credentials (section 19 row).
 
 ### Test vectors
 

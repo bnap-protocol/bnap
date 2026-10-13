@@ -524,7 +524,7 @@ A notes wallet MUST:
 - keep every Response it paid for (draft-00 8.1);
 - replay a credential that has no final answer, or whose receipt went missing, at once, at each `retry_after` and as soon as `pending_timeout` has passed, and in any case before its offer's deadline (7.5).
 
-A notes wallet SHOULD send the canonical ladder (6.3), send `offer_id` instead of the offer where it can (draft-00 5.1), and swap notes before their keyset's final expiry (section 10). It SHOULD include a `binding` whenever it can read its connection's `tls-exporter` value. A BINDING error means the gate cannot check the binding or the connection is intercepted; the wallet MAY retry without a binding only if it accepts that the response is then only as confidential as the credential (draft-00 6.4) (provisional; draft-00 does not say how a client learns whether a gate can check a binding).
+A notes wallet SHOULD send the canonical ladder (6.3), send `offer_id` instead of the offer where it can (draft-00 5.1), and swap notes before their keyset's final expiry (section 10). It SHOULD include a `binding` whenever it can read its connection's `tls-exporter` value. A BINDING error means the gate cannot check the binding or the connection is intercepted; the wallet MAY retry without a binding only if it accepts that the response is then only as confidential as the credential (draft-00 6.4). v0.4 said agents and native clients MUST bind. Draft-00 5.3 makes a gate behind a TLS-terminating front reject every bound credential, so a wallet that always binds could never pay such a gate, and draft-00 does not say how a client learns whether a gate can check a binding (provisional).
 
 ## 16. Withdrawal
 
@@ -646,6 +646,7 @@ Draft-00 wins over the v0.4 text and the overview in each of these places:
 | A suite tag on every input; suites 1 to 3 reserved | No suite tag. A different construction gets its own scheme ID, as ACT does in the overview's catalogue (provisional) | Draft-00 identifies schemes by ID |
 | `Authorization: BNAP` or `BNAP-Authorization`; `Authentication-Info` | `BNAP-Credential` and `BNAP-Receipt` (draft-00 10.2) | Draft-00 10.2 |
 | HTTP scope over a normalized URI and Content-Digest | The HTTP carrier's action scope (draft-00 10.1) | Draft-00 10.1 |
+| Agents and native clients MUST bind to the TLS exporter | A wallet SHOULD bind whenever it can read its connection's `tls-exporter` value, and MAY retry without a binding after a BINDING error (section 15) (provisional) | Draft-00 5.3: a gate behind a TLS-terminating front MUST reject bound credentials, so a client that always binds could not pay it |
 | Swap scope `H_"bnap/scope/swap"(origin)` at the info endpoint's swap URL | A price-0 manifest route (section 11) (provisional) | Draft-00 has no scheme-defined scopes |
 | A `bnap` section in the NUT-06 info endpoint with prices, limits, `max_fund`, `replay_window_s`, `op_keys`, `self_issued`, `swap` | The manifest (draft-00 9.1) for keys, limits and routes; offer parameters for the notes limits and `max_fund` | Draft-00 section 9 |
 | Error codes of the SPEND, error responses SHOULD be signed | Socket codes plus `bnap:notes/…` scheme codes; errors are unsigned (section 13) | Draft-00 8.2 |
@@ -695,7 +696,7 @@ The exact offer lives 10 minutes. With the default `pending_timeout` of 300 s, i
 
 ## Appendix B. Provisional decisions
 
-Each of these is marked "(provisional)" where it is made, and each is open to owner review. They are numbered in the order of the sections that make them; the rows of section 19 that say "(provisional)" restate P4, P11, P12, P25 and P27, except the one for P30, which section 19 makes.
+Each of these is marked "(provisional)" where it is made, and each is open to owner review. They are numbered in the order of the sections that make them; the rows of section 19 that say "(provisional)" restate P4, P11, P12, P25, P27 and P29, except the one for P30, which section 19 makes.
 
 | # | Where | Decision |
 | --- | --- | --- |
@@ -727,5 +728,5 @@ Each of these is marked "(provisional)" where it is made, and each is open to ow
 | P26 | 12.1 | Derivation type `0x02` for note keys; the counter's top 16 bits name the slot |
 | P27 | 12.2 | Wallets record their counters in the backup; restore scans at least that far |
 | P28 | 13.2 | `UNIT_MISMATCH` folds into `UNKNOWN_KEYSET` |
-| P29 | 15 | A wallet may retry without a binding after a BINDING error |
+| P29 | 15 | Wallets SHOULD bind whenever they can read `tls-exporter`, where v0.4 said agents and native clients MUST; a wallet may retry without a binding after a BINDING error |
 | P30 | 19 | Suites 1 to 3 become their own scheme IDs |
