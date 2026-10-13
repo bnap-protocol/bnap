@@ -1,0 +1,55 @@
+# BNAP carrier registry (draft-00 section 13: Carriers, Specification
+# required).
+#
+# A carrier defines the scope function that names one action and where
+# offers, credentials and receipts travel. Carriers carry no property vector:
+# the effective vector is computed over schemes, rails and verifiers only.
+# Carrier IDs are the names the manifest's carriers member lists (draft-00
+# 9.1). All entries are provisional; only http has a BNAP carrier spec so
+# far, in draft-00 section 10.
+
+format = 1
+
+[carrier.http]
+name = "HTTP"
+kind = "carrier"
+status = "provisional"
+source = "draft-00 section 10; overview, Carriers: HTTP (Core-1)"
+spec = "https://github.com/bnap-protocol/bnap/blob/develop/spec/socket-draft-00.md#10-the-http-carrier"
+scope = "action scope over the method, the target as received, the content hash and the listed headers; route scope over the origin and the route ID (draft-00 10.1)"
+transport = "offer in WWW-Authenticate: BNAP; credential in BNAP-Credential; receipt in BNAP-Receipt, a trailer or a final bnap-receipt event; errors in BNAP-Error"
+tls_binding = true
+notes = "Part of the Core-1 badge. A gate behind a front that terminates TLS cannot check a binding and must reject credentials that carry one (draft-00 5.3)."
+
+[carrier.mcp]
+name = "Model Context Protocol"
+kind = "carrier"
+status = "provisional"
+source = "overview, Plug catalogue: MCP, A2A; Carriers: MCP (Agent-1); draft-00 section 13"
+spec = "https://modelcontextprotocol.io/specification"
+scope = "the server URI, the tool name and the RFC 8785 canonical JSON of the arguments"
+transport = "JSON-RPC error data, request _meta and result _meta"
+tls_binding = false
+notes = "Part of the Agent-1 badge. The BNAP MCP carrier note is not written yet. TLS binding is not available through most MCP hosts, so MCP credentials rely on scope binding."
+
+[carrier.a2a]
+name = "Agent2Agent (A2A)"
+kind = "carrier"
+status = "provisional"
+source = "overview, Plug catalogue: MCP, A2A; Carriers: A2A"
+spec = "https://a2a-protocol.org/latest/specification/"
+scope = "the agent card and the task digest"
+transport = "task metadata"
+tls_binding = false
+notes = "Optional carrier; no BNAP carrier note yet."
+
+[carrier.nostr]
+name = "Nostr"
+kind = "carrier"
+status = "provisional"
+source = "overview, Plug catalogue: NIP-98 (Nostr carrier); Carriers: Nostr"
+spec = "https://github.com/nostr-protocol/nips/blob/master/01.md"
+scope = "the relay URL and the event ID"
+transport = "an event tag and the relay's OK message; offers published in advance"
+tls_binding = false
+notes = "Optional carrier; the priced relay writes NIP is not written yet. Offers are published in advance, so they carry issued_at and no mac (draft-00 4.4)."

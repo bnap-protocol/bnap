@@ -1,0 +1,214 @@
+# BNAP rail registry: rail kinds and rail entries.
+#
+# A rail kind fixes the canonical payment bytes a rail returns, from which the
+# gate computes the RailId (draft-00 6.1). A rail entry describes one system
+# that confirms payments of a kind, with the properties it adds to every pay
+# entry it funds: the gate takes the per-property minimum over the scheme,
+# its rails and its verifier (draft-00 section 11).
+#
+# Rail IDs are <rail kind>:<system>. Rails are operator-trusted plugs; their
+# entries only describe what the payment path guarantees to the client.
+# All entries are provisional; see schemes.toml for what that means.
+
+format = 1
+
+# ------------------------------------------------------------ rail kinds
+
+[rail_kind.ln]
+name = "Lightning"
+canonical = "the payment hash, 32 bytes"
+spec = "https://github.com/bnap-protocol/bnap/blob/develop/spec/socket-draft-00.md#61-identifiers"
+status = "provisional"
+
+[rail_kind.onchain]
+name = "On-chain Bitcoin"
+canonical = "the txid, 32 bytes, then the output index as 4 bytes big-endian"
+spec = "https://github.com/bnap-protocol/bnap/blob/develop/spec/socket-draft-00.md#61-identifiers"
+status = "provisional"
+
+[rail_kind.evm]
+name = "EVM token transfer"
+canonical = "lp(CAIP-2 chain ID), then the token contract (20 bytes), the payer (20 bytes) and the authorization nonce (32 bytes)"
+spec = "https://github.com/bnap-protocol/bnap/blob/develop/spec/socket-draft-00.md#61-identifiers"
+status = "provisional"
+
+[rail_kind.card]
+name = "Card"
+canonical = "lp(processor name), then lp(the processor's payment ID)"
+spec = "https://github.com/bnap-protocol/bnap/blob/develop/spec/socket-draft-00.md#61-identifiers"
+status = "provisional"
+
+# ------------------------------------------------------------ Lightning
+
+[rail."ln:phoenixd"]
+name = "Phoenixd"
+kind = "rail"
+rail_kind = "ln"
+status = "provisional"
+source = "overview, Value rails: Lightning; Plug points: Funding rail"
+spec = "https://github.com/ACINQ/phoenixd"
+properties = { link-payment = "unlinkable", finality = "final-on-verification", custody = "self-custody", pq = "no", maturity = "standard" }
+units = ["sat", "msat"]
+guarded = false
+conformance = ""
+notes = "The reference implementation's default receiving rail. Self-custodial, with ACINQ as its only channel peer: ACINQ sees payment amounts and hashes, not the payer. A settled invoice is final when the gate sees it."
+
+[rail."ln:lnd"]
+name = "LND"
+kind = "rail"
+rail_kind = "ln"
+status = "provisional"
+source = "overview, Value rails: Lightning; Plug points: Funding rail"
+spec = "https://github.com/lightningnetwork/lnd"
+properties = { link-payment = "unlinkable", finality = "final-on-verification", custody = "self-custody", pq = "no", maturity = "standard" }
+units = ["sat", "msat"]
+guarded = false
+conformance = ""
+notes = "The operator's own node. Onion routing hides the payer from the receiver."
+
+[rail."ln:ldk-node"]
+name = "LDK Node"
+kind = "rail"
+rail_kind = "ln"
+status = "provisional"
+source = "overview, Value rails: Lightning; Plug points: Funding rail"
+spec = "https://github.com/lightningdevkit/ldk-node"
+properties = { link-payment = "unlinkable", finality = "final-on-verification", custody = "self-custody", pq = "no", maturity = "standard" }
+units = ["sat", "msat"]
+guarded = false
+conformance = ""
+notes = "The operator's own node, embedded. Onion routing hides the payer from the receiver."
+
+[rail."ln:cln"]
+name = "Core Lightning"
+kind = "rail"
+rail_kind = "ln"
+status = "provisional"
+source = "overview, Value rails: Lightning; Plug points: Funding rail"
+spec = "https://github.com/ElementsProject/lightning"
+properties = { link-payment = "unlinkable", finality = "final-on-verification", custody = "self-custody", pq = "no", maturity = "standard" }
+units = ["sat", "msat"]
+guarded = false
+conformance = ""
+notes = "The operator's own node. Onion routing hides the payer from the receiver."
+
+[rail."ln:nwc"]
+name = "Nostr Wallet Connect (NIP-47)"
+kind = "rail"
+rail_kind = "ln"
+status = "provisional"
+source = "overview, Plug catalogue: NWC (NIP-47)"
+spec = "https://github.com/nostr-protocol/nips/blob/master/47.md"
+properties = { link-payment = "unlinkable", finality = "final-on-verification", custody = "third-party-custodial", pq = "no", maturity = "experimental" }
+units = ["sat", "msat"]
+guarded = false
+conformance = ""
+notes = "NWC reaches whatever wallet the operator connects, which may be custodial, so the entry takes the weakest custody value. Use a receive-only connection. NIP-47 is marked draft in the NIPs repository."
+
+[rail."ln:fedimint"]
+name = "Fedimint, through a Lightning gateway"
+kind = "rail"
+rail_kind = "ln"
+status = "provisional"
+source = "overview, Plug catalogue: Fedimint, Ark, Spark"
+spec = "https://fedimint.org"
+properties = { link-payment = "unlinkable", finality = "final-at-settlement", custody = "third-party-custodial", pq = "no", maturity = "experimental" }
+units = ["sat", "msat"]
+guarded = false
+conformance = ""
+notes = "The federation holds the operator's funds. Payments arrive through a Lightning gateway, so the canonical bytes are the payment hash; ecash transfers inside the federation have no rail kind yet."
+
+[rail."ln:ark"]
+name = "Ark, through Lightning"
+kind = "rail"
+rail_kind = "ln"
+status = "provisional"
+source = "overview, Plug catalogue: Fedimint, Ark, Spark"
+spec = "https://ark-protocol.org"
+properties = { link-payment = "unlinkable", finality = "final-at-settlement", custody = "third-party-custodial", pq = "no", maturity = "experimental" }
+units = ["sat", "msat"]
+guarded = false
+conformance = ""
+notes = "Ark is designed for unilateral exit, but custody varies with the server and the swap service (overview, Value rails), so the entry takes the weakest value until conformance shows the exit path. Final once the round settles. Ark-native transfers have no rail kind yet."
+
+[rail."ln:spark"]
+name = "Spark, through Lightning"
+kind = "rail"
+rail_kind = "ln"
+status = "provisional"
+source = "overview, Plug catalogue: Fedimint, Ark, Spark"
+spec = "https://docs.spark.money"
+properties = { link-payment = "unlinkable", finality = "final-at-settlement", custody = "third-party-custodial", pq = "no", maturity = "experimental" }
+units = ["sat", "msat"]
+guarded = false
+conformance = ""
+notes = "Custody depends on the Spark operators, so the entry takes the weakest value until conformance settles it. Spark-native transfers have no rail kind yet."
+
+[rail."ln:cashu-mint"]
+name = "A Cashu mint, through Lightning"
+kind = "rail"
+rail_kind = "ln"
+status = "provisional"
+source = "overview, Value rails: Ark, Spark, Fedimint, Cashu mints"
+spec = "https://github.com/cashubtc/nuts"
+properties = { link-payment = "unlinkable", finality = "final-at-settlement", custody = "third-party-custodial", pq = "no", maturity = "experimental" }
+units = ["sat"]
+guarded = false
+conformance = ""
+notes = "The operator receives through a third-party mint's Lightning quotes (NUT-04, NUT-05), so the mint holds the funds."
+
+# ------------------------------------------------------------ other Bitcoin
+
+[rail."onchain:bitcoin"]
+name = "On-chain Bitcoin"
+kind = "rail"
+rail_kind = "onchain"
+status = "provisional"
+source = "overview, Value rails: On-chain Bitcoin"
+spec = "https://bitcoin.org/bitcoin.pdf"
+properties = { link-payment = "linkable", finality = "final-at-settlement", custody = "self-custody", pq = "no", maturity = "standard" }
+units = ["sat"]
+guarded = false
+conformance = ""
+notes = "Final after the operator's confirmation target. Transactions are public, so payments are linkable to the paying addresses."
+
+# ------------------------------------------------------------ guarded, off by default
+
+[rail."evm:eip-3009"]
+name = "EVM stablecoins with EIP-3009 authorizations"
+kind = "rail"
+rail_kind = "evm"
+status = "provisional"
+source = "overview, Value rails: Stablecoins (x402 on EVM chains)"
+spec = "https://eips.ethereum.org/EIPS/eip-3009"
+properties = { link-payment = "linkable", finality = "freezable", custody = "self-custody", pq = "no", maturity = "experimental" }
+units = ["eip155:8453/erc20:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"]
+guarded = true
+conformance = ""
+notes = "Final at settlement, freezable by the token issuer. Credit it funds carries its own CAIP-19 unit, never sat (overview guardrails). Add one unit per chain and token the operator enables. EIP-3009 is still a draft EIP."
+
+[rail."evm:tempo"]
+name = "Tempo"
+kind = "rail"
+rail_kind = "evm"
+status = "provisional"
+source = "overview, Value rails: Stablecoins (Tempo); Plug points: Funding rail"
+spec = "https://tempo.xyz"
+properties = { link-payment = "linkable", finality = "freezable", custody = "self-custody", pq = "no", maturity = "experimental" }
+units = []
+guarded = true
+conformance = ""
+notes = "A blockchain for stablecoin payments. Its chain ID, token contracts and whether its transfers carry the authorization nonce the evm canonical bytes assume are still to be confirmed, so units is empty and the rail cannot fund credit yet."
+
+[rail."card:stripe"]
+name = "Cards through Stripe (MPP)"
+kind = "rail"
+rail_kind = "card"
+status = "provisional"
+source = "overview, Value rails: Cards (MPP through Stripe)"
+spec = "https://docs.stripe.com/payments"
+properties = { link-payment = "linkable", finality = "reversible", custody = "third-party-custodial", pq = "no", maturity = "standard" }
+units = ["USD", "EUR"]
+guarded = true
+conformance = ""
+notes = "Reversible for months, so it may only fund credit, in its own unit, held until final or capped per epoch, and never admit an action directly (overview guardrails). A card ties the payment to the payer. Notes funded this way come out reversible and linkable."
