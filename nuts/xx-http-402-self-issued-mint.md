@@ -11,7 +11,7 @@
 [NUT-24][24] lets a server ask for ecash in an HTTP 402 response. This NUT covers the case where the server is its own mint: it accepts only proofs it issued itself, for its own origin. That makes four things possible that NUT-24 leaves open:
 
 - **Request binding.** Every proof is a [key-secret proof][xx-keys] whose witness signs a digest of the exact request, so a payment copied from a log or a proxy cannot pay for anything else.
-- **Change and refunds.** The wallet sends blinded outputs with its proofs, and the server signs exactly the unspent value back in the response, also when the action fails.
+- **Change and refunds.** The wallet sends blinded outputs with its proofs, and the server signs back, in the response, exactly the part of the credential's value it did not charge, also when the action fails.
 - **Funding inside the 402.** A wallet with no proofs yet gets a [NUT-23][23] Lightning quote in the 402, pays it, and redeems it in its next request.
 - **Receipts.** Every paid response carries a signed receipt.
 
@@ -68,7 +68,7 @@ A wallet that implements this NUT:
 
 1. verifies the BNAP offer as the socket requires ([socket][socket], section 4.4): its signature under a key of the origin's pinned manifest, its expiry, and its scope;
 2. checks that the `i` of the `X-Cashu` request equals the OfferID of the offer, and uses the offer, not the payment request, for everything that follows;
-3. builds a `bnap:notes` credential body ([notes][notes], section 3): its proofs as inputs, a set of blinded outputs whose amounts are 1, 2, 4, ... up to the highest power of two in the value it sends, and, when it redeems a funding quote, the quote ID;
+3. builds a `bnap:notes` credential body ([notes][notes], section 3): its proofs as inputs, the quote ID when it redeems a funding quote, and blinded outputs of 1, 2, 4, ... sat up to the highest power of two not above the credential's value. The **value** is the sum of the proofs plus the amount of the quote, less the proofs' input fees ([NUT-02][02]; a quote pays no fee), and must be at least the price, or the ceiling for a metered action ([notes][notes], section 6.3);
 4. signs the socket's Digest ([socket][socket], section 5.2) with the key of each proof, which is the external context of [key-secret proofs][xx-keys], and with the quote's [NUT-20][20] key when it redeems a quote;
 5. retries the request with the credential in the `BNAP-Credential` field.
 
@@ -78,7 +78,7 @@ The wallet **MUST NOT** send the proofs in `X-Cashu` or anywhere else outside th
 
 The server checks the credential as the socket and the scheme require ([notes][notes], section 6): the keysets, the amounts, each witness over the Digest, each proof's `C`, the output ladder, and the funding quote if there is one. It then commits every proof's `Y` once, atomically and durably, before the action runs, so a proof can never pay twice. A repeat of the same credential for the same request is a replay and gets the stored response instead of running the action again. The socket answers even a replay with `STALE` once its offer has expired, so the server stops admitting new credentials `pending_timeout` plus 60 seconds before an offer expires, and every request it accepted can still collect its refund by replaying ([notes][notes], section 5.4). A wallet replays a request that got no final answer before the offer expires.
 
-At settlement the server knows the charge: the price for a fixed-price action, the metered charge for a metered one, and 0 when the action failed. It signs blinded outputs worth exactly the value sent minus the charge, chosen by a fixed rule the wallet can recompute ([notes][notes], section 7), with [NUT-12][12] DLEQ proofs made with the deterministic nonce. A failed action therefore returns the whole value, less input fees.
+At settlement the server knows the charge: the price for a fixed-price action, the metered charge for a metered one, and 0 when the action failed. It signs blinded outputs worth exactly the value minus the charge, chosen by a fixed rule the wallet can recompute ([notes][notes], section 7), with [NUT-12][12] DLEQ proofs made with the deterministic nonce. The input fees are not part of the value, so the server keeps them in every outcome, and a failed action, with charge 0, gets the whole value back.
 
 ## The receipt
 
