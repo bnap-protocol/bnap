@@ -1,0 +1,162 @@
+# BNAP scheme property registry: every property and its values.
+#
+# Values are listed weakest first. A gate compares values by their position
+# in this list, so the order is security relevant: validate.py pins it to the
+# order in the spec and refuses any other.
+#
+# Sources: overview-v0.5.md "Scheme properties and route policy" (the twelve
+# properties and their order) and socket-draft-00.md section 11 (the entry
+# layout and the value tokens it spells out). Tokens the spec does not spell
+# out were fixed here; see registry/README.md, "Property tokens".
+#
+# Fields of each [[property]]:
+#   id          the key used in entries and in a route's `require`
+#   label       the overview's name for it
+#   location    "entry" for the three properties draft-00 section 11 puts at
+#               the top level of a scheme entry (use, binding, refund);
+#               "properties" for the nine in the entry's `properties` table
+#   applies_to  the entry kinds that carry this property. An entry of one of
+#               these kinds MUST state it; an entry of any other kind MUST NOT
+#   values      weakest first; `id` is the token, `label` the overview text
+
+format = 1
+
+[[property]]
+id = "use"
+label = "use, as the socket enforces it"
+location = "entry"
+applies_to = ["credential", "attestation"]
+description = "The use model the socket enforces (draft-00 6.2). It can be stricter than the native scheme: L402 tokens are reusable natively but single in BNAP."
+values = [
+  { id = "reusable", label = "reusable: nothing consumed beyond the outcome record" },
+  { id = "rate", label = "rate-limited: rate(k, epoch), at most k per use ID per epoch" },
+  { id = "single", label = "single: each use ID admits one action" },
+]
+
+[[property]]
+id = "binding"
+label = "binding class"
+location = "entry"
+applies_to = ["credential", "attestation"]
+description = "How the credential is tied to the offer and the request (overview, Credential envelope; draft-00 4.3)."
+values = [
+  { id = "none", label = "none: a bearer credential" },
+  { id = "O", label = "O: a server-made artifact embeds the OfferID" },
+  { id = "A", label = "A: a client-made artifact embeds the Context" },
+  { id = "S", label = "S: a signature over the Digest" },
+]
+
+[[property]]
+id = "theft"
+label = "theft"
+location = "properties"
+applies_to = ["credential", "attestation"]
+description = "What a party who copies the credential bytes can do with them. Class O and class none are bearer (draft-00 12)."
+values = [
+  { id = "bearer", label = "bearer" },
+  { id = "key-witnessed", label = "key-witnessed" },
+]
+
+[[property]]
+id = "link-payment"
+label = "link-payment"
+location = "properties"
+applies_to = ["credential", "rail"]
+description = "Whether the credential, or the payment path, links an action to the payment that funded it and to the payer."
+values = [
+  { id = "linkable", label = "linkable to the payment" },
+  { id = "unlinkable", label = "unlinkable from it" },
+]
+
+[[property]]
+id = "link-actions"
+label = "link-actions"
+location = "properties"
+applies_to = ["credential", "attestation"]
+description = "Whether two actions by the same client can be linked through the credential."
+values = [
+  { id = "linkable", label = "linkable across actions" },
+  { id = "unlinkable", label = "unlinkable across them" },
+]
+
+[[property]]
+id = "issuer"
+label = "issuer, as the server trusts it"
+location = "properties"
+applies_to = ["credential", "attestation", "verifier"]
+description = "Whom the server relies on to vouch that the credential is valid."
+values = [
+  { id = "third-party", label = "third party" },
+  { id = "facilitator", label = "facilitator" },
+  { id = "self-issued", label = "self-issued" },
+]
+
+[[property]]
+id = "verify"
+label = "verify"
+location = "properties"
+applies_to = ["credential", "attestation", "verifier"]
+description = "Whether verification needs a remote party to be reachable."
+values = [
+  { id = "online", label = "online facilitator" },
+  { id = "offline", label = "offline" },
+]
+
+[[property]]
+id = "finality"
+label = "finality"
+location = "properties"
+applies_to = ["credential", "rail", "verifier"]
+description = "When the value received can no longer be taken back."
+values = [
+  { id = "reversible", label = "reversible" },
+  { id = "freezable", label = "freezable" },
+  { id = "final-at-settlement", label = "final at settlement" },
+  { id = "final-on-verification", label = "final on verification" },
+]
+
+[[property]]
+id = "custody"
+label = "custody, as the client trusts it"
+location = "properties"
+applies_to = ["credential", "rail", "verifier"]
+description = "Who holds the value that backs the client's credential."
+values = [
+  { id = "third-party-custodial", label = "third-party custodial" },
+  { id = "operator-iou", label = "operator IOU" },
+  { id = "self-custody", label = "client self-custody" },
+]
+
+[[property]]
+id = "refund"
+label = "refund"
+location = "entry"
+applies_to = ["credential"]
+description = "How unused value goes back to the client (draft-00 6.4 and 7). A metered pay entry needs refund = atomic or upto = true."
+values = [
+  { id = "none", label = "none" },
+  { id = "out-of-band", label = "out of band" },
+  { id = "atomic", label = "atomic in protocol" },
+]
+
+[[property]]
+id = "pq"
+label = "pq"
+location = "properties"
+applies_to = ["credential", "attestation", "rail"]
+description = "Whether the security of the credential or the payment holds against a quantum adversary."
+values = [
+  { id = "no", label = "no" },
+  { id = "yes", label = "yes" },
+]
+
+[[property]]
+id = "maturity"
+label = "maturity"
+location = "properties"
+applies_to = ["credential", "attestation", "rail", "verifier"]
+description = "Maturity of the specification. Experimental entries need allow_experimental on each route that uses them."
+values = [
+  { id = "experimental", label = "experimental" },
+  { id = "standard", label = "standard" },
+]

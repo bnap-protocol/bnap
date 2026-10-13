@@ -1,0 +1,68 @@
+# BNAP verifier registry.
+#
+# A verifier checks a credential for the gate, locally or through a
+# facilitator, in two phases: verify, then settle (overview, Plug points).
+# Its entry carries the properties it adds to a pay entry: the gate takes the
+# per-property minimum over the scheme, its rails and its verifier
+# (draft-00 section 11). A scheme entry lists the verifiers it may use.
+#
+# Verifier IDs are <name>[:<variant>]. The overview asks facilitators to
+# declare a trust level: non-custodial relay, custodial or merchant of
+# record; each level is its own entry. All entries are provisional.
+
+format = 1
+
+[verifier."local"]
+name = "The gate's own verification"
+kind = "verifier"
+trust = "local"
+status = "provisional"
+source = "overview, Plug points: Verifier (Local)"
+spec = "https://github.com/bnap-protocol/bnap/blob/develop/spec/socket-draft-00.md#11-registry-entries"
+properties = { issuer = "self-issued", verify = "offline", finality = "final-on-verification", custody = "self-custody", maturity = "standard" }
+conformance = ""
+notes = "The neutral element: every property at its strongest, so a scheme verified locally keeps its own vector."
+
+[verifier."mpp-processor"]
+name = "MPP payment processor"
+kind = "verifier"
+trust = "custodial"
+status = "provisional"
+source = "overview, Plug points: Verifier (MPP processor)"
+spec = "https://paymentauth.org"
+properties = { issuer = "facilitator", verify = "online", finality = "final-at-settlement", custody = "third-party-custodial", maturity = "experimental" }
+conformance = ""
+notes = "A processor that verifies and settles MPP credentials for the operator and pays out later, so it holds the funds in between and must be online."
+
+[verifier."x402-facilitator:non-custodial"]
+name = "x402 facilitator, non-custodial relay"
+kind = "verifier"
+trust = "non-custodial-relay"
+status = "provisional"
+source = "overview, Plug points: Verifier (x402 facilitator); Value rails guardrails"
+spec = "https://github.com/x402-foundation/x402"
+properties = { issuer = "facilitator", verify = "online", finality = "final-at-settlement", custody = "self-custody", maturity = "experimental" }
+conformance = ""
+notes = "Broadcasts the client's signed authorization, or checks a Lightning preimage, and never holds funds; the x402 EVM spec says it cannot change the amount or the destination."
+
+[verifier."x402-facilitator:custodial"]
+name = "x402 facilitator, custodial"
+kind = "verifier"
+trust = "custodial"
+status = "provisional"
+source = "overview, Plug points: Verifier (x402 facilitator); Value rails guardrails"
+spec = "https://github.com/x402-foundation/x402"
+properties = { issuer = "facilitator", verify = "online", finality = "final-at-settlement", custody = "third-party-custodial", maturity = "experimental" }
+conformance = ""
+notes = "Takes the payment into its own account before paying the operator, so x402 through it is custodial (overview, effective vectors)."
+
+[verifier."x402-facilitator:merchant-of-record"]
+name = "x402 facilitator, merchant of record"
+kind = "verifier"
+trust = "merchant-of-record"
+status = "provisional"
+source = "overview, Plug points: Verifier (x402 facilitator); Value rails guardrails"
+spec = "https://github.com/x402-foundation/x402"
+properties = { issuer = "facilitator", verify = "online", finality = "reversible", custody = "third-party-custodial", maturity = "experimental" }
+conformance = ""
+notes = "Sells to the client in its own name and holds the funds; it can unwind a sale under its own terms, so the entry takes the weakest finality."

@@ -1,0 +1,440 @@
+# BNAP scheme registry: credential and attestation schemes.
+#
+# One entry per system in the overview's plug catalogue. A catalogue row that
+# names two binding classes for one system gets one ID per class, because an
+# entry has exactly one class and a plug can never declare its own.
+# The entry layout follows draft-00 section 11; registry/README.md documents
+# every field. Check with: python3 -I registry/validate.py
+#
+# Every entry here is status = "provisional": its vector is the designated
+# expert's reading of the scheme's specification, set before any conformance
+# suite existed. Where a value depends on the deployment, or the
+# specification does not settle it, the entry takes the weakest value.
+
+format = 1
+
+# ------------------------------------------------------------ credentials
+
+[scheme."bnap:notes"]
+name = "Blind notes"
+kind = "credential"
+role = "value"
+status = "provisional"
+source = "overview, Plug catalogue: Blind notes (bnap:notes); draft-00 section 11 example"
+spec = "https://github.com/bnap-protocol/bnap/blob/develop/spec/schemes/bnap-notes.md"
+binding = "S"
+use = "single"
+refund = "atomic"
+upto = false
+properties = { theft = "key-witnessed", link-payment = "unlinkable", link-actions = "unlinkable", issuer = "self-issued", verify = "offline", finality = "final-on-verification", custody = "operator-iou", pq = "no", maturity = "experimental" }
+local_id = "Y of each input, 33-byte compressed point"
+quota_id = ""
+rail_refs = "none at spend; the funding payment at minting, confirmed by the rail"
+rail_kinds = ["ln"]
+verifiers = ["local"]
+body = "TLV, per the bnap:notes scheme spec (DECISIONS row 31)"
+witness = "one BIP-340 signature per input, over the Digest"
+native = []
+units = ["sat"]
+conformance = ""
+notes = "The default scheme; this entry is the draft-00 section 11 example. link-payment is unlinkable except that the first action after funding can be correlated by timing. Funded through a reversible or linkable rail, the effective vector drops to that rail's values. The scheme spec is still in its v0.4 form until the draft-00 rewrite of DECISIONS row 31 lands."
+
+[scheme."httpauth:L402"]
+name = "L402"
+kind = "credential"
+role = "value"
+status = "provisional"
+source = "overview, Plug catalogue: L402 (bLIP-26)"
+spec = "https://github.com/lightning/blips/pull/26"
+binding = "O"
+use = "single"
+refund = "none"
+upto = false
+properties = { theft = "bearer", link-payment = "linkable", link-actions = "unlinkable", issuer = "self-issued", verify = "offline", finality = "final-on-verification", custody = "self-custody", pq = "no", maturity = "experimental" }
+local_id = "the payment hash committed in the macaroon, 32 bytes"
+quota_id = ""
+rail_refs = "ln: the payment hash committed in the macaroon"
+rail_kinds = ["ln"]
+verifiers = ["local"]
+body = "the L402 token, macaroon:preimage, as the client would send it natively"
+witness = "none: class O has no witness"
+native = [
+  { kind = "l402-macaroon", embeds = "a first-party caveat bnap_offer = hex(OfferID)", credential = "the L402 token macaroon:preimage (draft-00 5.4)" },
+  { kind = "bolt11", embeds = "the invoice description hash is the OfferID", credential = "the L402 token macaroon:preimage (draft-00 5.4)" },
+]
+units = ["sat"]
+conformance = ""
+notes = "Reusable natively, single in BNAP (draft-00 6.2). bLIP-26 is an open pull request, so the entry cites the PR (ERRATA row 34); the adapter accepts token= and macaroon=, and both the L402 and LSAT scheme names. Neither refund nor upto, so metered routes give it exact-scope offers priced at the ceiling (draft-00 10.3). One Lightning payment shares one ln RailId with payment:lightning/charge and x402 on Lightning."
+
+[scheme."payment:lightning/charge"]
+name = "MPP, Lightning charge"
+kind = "credential"
+role = "value"
+status = "provisional"
+source = "overview, Plug catalogue: MPP (draft-httpauth-payment)"
+spec = "https://datatracker.ietf.org/doc/html/draft-httpauth-payment-01"
+binding = "O"
+use = "single"
+refund = "none"
+upto = false
+properties = { theft = "bearer", link-payment = "linkable", link-actions = "unlinkable", issuer = "self-issued", verify = "offline", finality = "final-on-verification", custody = "self-custody", pq = "no", maturity = "experimental" }
+local_id = "the invoice's payment hash, 32 bytes"
+quota_id = ""
+rail_refs = "ln: the invoice's payment hash"
+rail_kinds = ["ln"]
+verifiers = ["local", "mpp-processor"]
+body = "the MPP credential, the Authorization: Payment value as received"
+witness = "none: class O has no witness"
+native = [
+  { kind = "mpp-challenge", embeds = "the challenge's HMAC'd id carries the OfferID", credential = "the MPP credential, the Authorization: Payment value as received" },
+  { kind = "bolt11", embeds = "the invoice description hash is the OfferID", credential = "the MPP credential, the Authorization: Payment value as received" },
+]
+units = ["sat"]
+conformance = ""
+notes = "The catalogue row covers MPP as a whole; each payment method and intent is its own scheme ID, and this entry registers lightning/charge, the one the draft-00 vectors use. MPP returns its own receipt in Payment-Receipt; the BNAP receipt travels next to it in BNAP-Receipt (ERRATA row 33). One Lightning payment shares one ln RailId with L402 and x402 on Lightning."
+
+[scheme."x402:exact@eip155:8453"]
+name = "x402 exact on Base (EVM)"
+kind = "credential"
+role = "value"
+status = "provisional"
+source = "overview, Plug catalogue: x402 on EVM chains"
+spec = "https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_evm.md"
+binding = "A"
+use = "single"
+refund = "none"
+upto = false
+properties = { theft = "bearer", link-payment = "linkable", link-actions = "linkable", issuer = "facilitator", verify = "online", finality = "freezable", custody = "self-custody", pq = "no", maturity = "experimental" }
+local_id = "the payer address, 20 bytes, then the EIP-3009 authorization nonce, 32 bytes"
+quota_id = ""
+rail_refs = "evm: chain ID, token contract, payer and authorization nonce, confirmed by the rail after settlement"
+rail_kinds = ["evm"]
+verifiers = ["x402-facilitator:non-custodial", "x402-facilitator:custodial", "x402-facilitator:merchant-of-record"]
+body = "the x402 payment payload: an EIP-3009 transferWithAuthorization signed by the payer, with nonce = Context"
+witness = "none: class A; the payer's signature sits in the body and covers the Context, not the Digest"
+native = []
+units = ["eip155:8453/erc20:0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"]
+conformance = ""
+notes = "Each EVM network is its own scheme ID with its own entry; this one is Base (CAIP-2 eip155:8453) with USDC, as in the overview's Caparra config. Guarded, off by default. Only BNAP-aware clients can pay it: a tier-0 x402 client picks its own nonce, so it cannot set nonce = Context, and class A has no native path. The token issuer can freeze funds, hence freezable. One address pays every action, so payments and actions are linkable."
+
+[scheme."x402:exact@lnbtc:000000000019d6689c085ae165831e93"]
+name = "x402 exact on Lightning (lnbtc mainnet)"
+kind = "credential"
+role = "value"
+status = "provisional"
+source = "overview, Plug catalogue: x402 on Lightning; ERRATA row 32"
+spec = "https://github.com/x402-foundation/x402/blob/main/specs/schemes/exact/scheme_exact_lnbtc.md"
+binding = "O"
+use = "single"
+refund = "none"
+upto = false
+properties = { theft = "bearer", link-payment = "linkable", link-actions = "unlinkable", issuer = "self-issued", verify = "offline", finality = "final-on-verification", custody = "self-custody", pq = "no", maturity = "experimental" }
+local_id = "the invoice's payment hash, 32 bytes"
+quota_id = ""
+rail_refs = "ln: the invoice's payment hash"
+rail_kinds = ["ln"]
+verifiers = ["local", "x402-facilitator:non-custodial"]
+body = "the x402 payment payload for lnbtc: the preimage, with the invoice echoed in accepted.extra.invoice"
+witness = "none: class O has no witness"
+native = [
+  { kind = "x402-requirements", embeds = "the payment requirements carry the invoice, whose description hash is the OfferID", credential = "the x402 payment payload, as received" },
+]
+units = ["sat"]
+conformance = ""
+notes = "Published 2026-09-23 (ERRATA row 32) and deferred to v0.6. The ID carries the mainnet network identifier the published spec gives; the overview's shorter x402:exact@lnbtc predates it. The resource server makes the invoice and the client chooses no nonce, so the class stays O. A facilitator checks the preimage locally and moves no funds. One Lightning payment shares one ln RailId with L402 and MPP."
+
+[scheme."cashu:nut24"]
+name = "Cashu NUT-24 HTTP 402, tokens locked for the operator"
+kind = "credential"
+role = "value"
+status = "provisional"
+source = "overview, Plug catalogue: Cashu NUT-24, NUT-18, NUT-26"
+spec = "https://github.com/cashubtc/nuts/blob/main/24.md"
+binding = "O"
+use = "single"
+refund = "none"
+upto = false
+properties = { theft = "bearer", link-payment = "unlinkable", link-actions = "unlinkable", issuer = "third-party", verify = "online", finality = "final-at-settlement", custody = "third-party-custodial", pq = "no", maturity = "experimental" }
+local_id = "Y of each proof, 33-byte compressed point"
+quota_id = ""
+rail_refs = "none: the ecash is itself the payment, and no rail kind covers third-party ecash yet"
+rail_kinds = []
+verifiers = ["local"]
+body = "a cashuB token whose proofs carry the NUT-10 locking condition the request named, such as a NUT-11 P2PK lock to the operator's key"
+witness = "none: class O has no witness"
+native = [
+  { kind = "cashu-request", embeds = "the request's NUT-10 locking condition ties the tokens to this offer; the adapter spec fixes how it carries the OfferID", credential = "the cashuB token from the X-Cashu field, as received" },
+]
+units = ["sat"]
+conformance = ""
+notes = "One catalogue row with two binding classes, so two IDs: this one admits only locked tokens (class O); cashu:nut24@unlocked takes the rest (class none). NUT-18 is the payment request and NUT-26 its bech32m encoding; both ride inside this scheme. Tokens come from a mint the operator trusts, so the mint holds the value and must be online to swap them."
+
+[scheme."cashu:nut24@unlocked"]
+name = "Cashu NUT-24 HTTP 402, unlocked tokens"
+kind = "credential"
+role = "value"
+status = "provisional"
+source = "overview, Plug catalogue: Cashu NUT-24, NUT-18, NUT-26"
+spec = "https://github.com/cashubtc/nuts/blob/main/24.md"
+binding = "none"
+use = "single"
+refund = "none"
+upto = false
+properties = { theft = "bearer", link-payment = "unlinkable", link-actions = "unlinkable", issuer = "third-party", verify = "online", finality = "final-at-settlement", custody = "third-party-custodial", pq = "no", maturity = "experimental" }
+local_id = "Y of each proof, 33-byte compressed point"
+quota_id = ""
+rail_refs = "none: the ecash is itself the payment, and no rail kind covers third-party ecash yet"
+rail_kinds = []
+verifiers = ["local"]
+body = "a cashuB token with no locking condition"
+witness = "none: class none has no witness"
+native = []
+units = ["sat"]
+conformance = ""
+notes = "Unlocked tokens are bearer: class none, admissible only at price 0 and never with waive, discount or quota (DECISIONS row 25), and only in exact-scope offers (draft-00 4.3). Natives are for class O, so this ID has none."
+
+[scheme."cashu:nut22"]
+name = "Cashu NUT-22 blind authentication"
+kind = "credential"
+role = "value"
+status = "provisional"
+source = "overview, Plug catalogue: Cashu NUT-22 blind auth"
+spec = "https://github.com/cashubtc/nuts/blob/main/22.md"
+binding = "none"
+use = "single"
+refund = "none"
+upto = false
+properties = { theft = "bearer", link-payment = "unlinkable", link-actions = "unlinkable", issuer = "self-issued", verify = "offline", finality = "final-on-verification", custody = "operator-iou", pq = "no", maturity = "experimental" }
+local_id = "Y of the blind auth token's proof, 33-byte compressed point"
+quota_id = ""
+rail_refs = "none: blind auth tokens carry no payment"
+rail_kinds = []
+verifiers = ["local"]
+body = "one blind auth token (NUT-22)"
+witness = "none: class none has no witness"
+native = []
+units = ["sat"]
+conformance = ""
+notes = "Native at price 0: class none, so admissible only at price 0 and never with waive, discount or quota (DECISIONS row 25). The operator's own signer issues and checks the tokens, as it does notes, hence self-issued and offline."
+
+[scheme."vnd.cfrg.act"]
+name = "Anonymous Credit Tokens (ACT)"
+kind = "credential"
+role = "value"
+status = "provisional"
+source = "overview, Plug catalogue: ACT"
+spec = "https://datatracker.ietf.org/doc/draft-schlesinger-cfrg-act/"
+binding = "S"
+use = "single"
+refund = "none"
+upto = false
+properties = { theft = "key-witnessed", link-payment = "unlinkable", link-actions = "unlinkable", issuer = "self-issued", verify = "offline", finality = "final-on-verification", custody = "operator-iou", pq = "no", maturity = "experimental" }
+local_id = "the spend's nullifier, as the adapter spec will define it"
+quota_id = ""
+rail_refs = "the funding payment at issuance, confirmed by the rail, as for bnap:notes"
+rail_kinds = ["ln"]
+verifiers = ["local"]
+body = "an ACT spend, as the adapter spec will define it"
+witness = "a proof bound to the Digest, as the adapter spec will define it"
+native = []
+units = []
+conformance = ""
+notes = "Reserved for v0.7: no adapter spec yet, so units is empty and the scheme cannot be offered. The ID sits in the vnd. tree until ACT has one in a source registry. An ACT spend returns the unspent credit, which may justify refund = atomic once the adapter is specified; the seed keeps the weakest value."
+
+[scheme."vnd.hashcash.v1"]
+name = "Hashcash"
+kind = "credential"
+role = "value"
+status = "provisional"
+source = "overview, Plug catalogue: Hashcash, Anubis"
+spec = "http://www.hashcash.org/papers/hashcash.pdf"
+binding = "A"
+use = "single"
+refund = "none"
+upto = false
+properties = { theft = "bearer", link-payment = "unlinkable", link-actions = "unlinkable", issuer = "self-issued", verify = "offline", finality = "final-on-verification", custody = "self-custody", pq = "no", maturity = "experimental" }
+local_id = "SHA-256 of the stamp"
+quota_id = ""
+rail_refs = "none: work, not a payment"
+rail_kinds = []
+verifiers = ["local"]
+body = "a version 1 stamp whose resource field is the hex Context"
+witness = "none: class A; the work commits to the Context, not the Digest"
+native = []
+units = []
+conformance = ""
+notes = "Weak: work costs a well-funded attacker little. The catalogue's unit is work, which draft-00 4.1 does not list, so units is empty and the scheme cannot be offered in a pay entry until a unit is registered. pq stays no, since a quantum computer speeds up the search."
+
+[scheme."vnd.techaro.anubis"]
+name = "Anubis proof of work"
+kind = "credential"
+role = "value"
+status = "provisional"
+source = "overview, Plug catalogue: Hashcash, Anubis"
+spec = "https://github.com/TecharoHQ/anubis"
+binding = "A"
+use = "single"
+refund = "none"
+upto = false
+properties = { theft = "bearer", link-payment = "unlinkable", link-actions = "unlinkable", issuer = "self-issued", verify = "offline", finality = "final-on-verification", custody = "self-custody", pq = "no", maturity = "experimental" }
+local_id = "SHA-256 of the solved challenge"
+quota_id = ""
+rail_refs = "none: work, not a payment"
+rail_kinds = []
+verifiers = ["local"]
+body = "an Anubis proof of work over a challenge that is the hex Context"
+witness = "none: class A; the work commits to the Context, not the Digest"
+native = []
+units = []
+conformance = ""
+notes = "Weak, like Hashcash, and for the same reason. Anubis normally turns a solved challenge into a session cookie; as a BNAP scheme each solution admits one action. No draft-00 unit covers work, so units is empty until one is registered."
+
+# ------------------------------------------------------------ attestations
+
+[scheme."pp:0x0002"]
+name = "Privacy Pass, publicly verifiable tokens (blind RSA)"
+kind = "attestation"
+role = "attestation"
+status = "provisional"
+source = "overview, Plug catalogue: Privacy Pass (RFC 9576-9578)"
+spec = "https://www.rfc-editor.org/rfc/rfc9578.html"
+binding = "O"
+use = "single"
+properties = { theft = "bearer", link-actions = "unlinkable", issuer = "third-party", verify = "offline", pq = "no", maturity = "standard" }
+local_id = "the token's nonce, 32 bytes"
+quota_id = ""
+verifiers = ["local"]
+body = "the token, as RFC 9577 sends it in Authorization: PrivateToken"
+witness = "none: class O has no witness"
+conformance = ""
+notes = "Token type 0x0002 (RFC 9578, blind RSA, publicly verifiable); other token types, such as 0x0001, need entries of their own. The redemption context is the OfferID, so the client builds the token challenge from the attest entry's params and needs no native. Token IDs change with every token, so the scheme cannot carry a quota (draft-00 6.2)."
+
+[scheme."vnd.cfrg.arc"]
+name = "Anonymous Rate-Limited Credentials (ARC)"
+kind = "attestation"
+role = "attestation"
+status = "provisional"
+source = "overview, Plug catalogue: ARC"
+spec = "https://datatracker.ietf.org/doc/draft-yun-cfrg-arc/"
+binding = "O"
+use = "rate"
+properties = { theft = "bearer", link-actions = "unlinkable", issuer = "third-party", verify = "online", pq = "no", maturity = "experimental" }
+local_id = "the presentation tag, as the adapter spec will define it"
+quota_id = ""
+verifiers = ["local"]
+body = "an ARC presentation whose presentation context is the OfferID"
+witness = "none: class O has no witness"
+conformance = ""
+notes = "ARC tags differ per presentation, so the socket cannot key a rate(k, epoch) counter on them (draft-00 6.2); the limit comes from ARC's own presentation limit. The entry keeps the catalogue's use = rate, the weaker reading, until the expert settles it. ARC is privately verifiable, so an issuer other than the operator must be online. The ID sits in the vnd. tree until ARC has a Privacy Pass token type."
+
+[scheme."httpsig:web-bot-auth"]
+name = "Web Bot Auth"
+kind = "attestation"
+role = "attestation"
+status = "provisional"
+source = "overview, Plug catalogue: Web Bot Auth"
+spec = "https://www.ietf.org/archive/id/draft-meunier-webbotauth-httpsig-protocol-00.html"
+binding = "A"
+use = "reusable"
+properties = { theft = "bearer", link-actions = "linkable", issuer = "third-party", verify = "online", pq = "no", maturity = "experimental" }
+local_id = "the JWK thumbprint of the bot's signing key"
+quota_id = "the JWK thumbprint of the bot's signing key"
+verifiers = ["local"]
+body = "the Signature, Signature-Input and, if sent, Signature-Agent field values, copied by the client; the signature covers BNAP-Context"
+witness = "none: class A; the signature sits in the body and covers the Context, not the Digest"
+conformance = ""
+notes = "The adapter builds the signature base from the gate's own Context and scope inputs, never from raw request fields (draft-00 5.1). The key comes from the bot operator's key directory, so the issuer is a third party reached online. Draft-00 10.3 uses it for a 20% discount in a route-scope offer, which needs class S or A."
+
+[scheme."httpauth:DPoP"]
+name = "OAuth access tokens and API keys, with DPoP"
+kind = "attestation"
+role = "attestation"
+status = "provisional"
+source = "overview, Plug catalogue: OAuth and API keys, with DPoP"
+spec = "https://www.rfc-editor.org/rfc/rfc9449.html"
+binding = "A"
+use = "reusable"
+properties = { theft = "bearer", link-actions = "linkable", issuer = "third-party", verify = "online", pq = "no", maturity = "standard" }
+local_id = "the DPoP key's JWK thumbprint (RFC 7638), the token's cnf.jkt"
+quota_id = "the DPoP key's JWK thumbprint (RFC 7638), the token's cnf.jkt"
+verifiers = ["local"]
+body = "the access token and the DPoP proof, with the Context in a proof claim, copied by the client"
+witness = "none: class A; the proof sits in the body and covers the Context, not the Digest"
+conformance = ""
+notes = "Class A through a DPoP claim that carries the Context; the claim name is for the adapter spec. Without DPoP the same tokens are httpauth:Bearer, class none. The draft-00 attestation-only vector uses it as a waive. Tokens may need introspection at the authorization server, so the issuer is a third party reached online."
+
+[scheme."httpauth:Bearer"]
+name = "OAuth bearer tokens and API keys, without DPoP"
+kind = "attestation"
+role = "attestation"
+status = "provisional"
+source = "overview, Plug catalogue: OAuth and API keys, with DPoP"
+spec = "https://www.rfc-editor.org/rfc/rfc6750.html"
+binding = "none"
+use = "reusable"
+properties = { theft = "bearer", link-actions = "linkable", issuer = "third-party", verify = "online", pq = "no", maturity = "standard" }
+local_id = "SHA-256 of the token"
+quota_id = ""
+verifiers = ["local"]
+body = "the bearer token or API key, copied by the client"
+witness = "none: class none has no witness"
+conformance = ""
+notes = "Class none: usable only with effect required, never to waive, discount or carry a quota (draft-00 7). The overview's route example rests on this entry: a reusable bearer token can never admit a route that requires use = single. API keys sent in other fields use this entry too; the adapter copies the key into the body."
+
+[scheme."nip:98"]
+name = "Nostr HTTP Auth (NIP-98)"
+kind = "attestation"
+role = "attestation"
+status = "provisional"
+source = "overview, Plug catalogue: NIP-98"
+spec = "https://github.com/nostr-protocol/nips/blob/master/98.md"
+binding = "A"
+use = "reusable"
+properties = { theft = "bearer", link-actions = "linkable", issuer = "third-party", verify = "offline", pq = "no", maturity = "experimental" }
+local_id = "the event's public key, 32-byte x-only key"
+quota_id = "the event's public key, 32-byte x-only key"
+verifiers = ["local"]
+body = "the signed kind 27235 event, with the Context in a tag"
+witness = "none: class A; the event signature sits in the body and covers the Context, not the Digest"
+conformance = ""
+notes = "A Nostr key is self-asserted and nobody vouches for it, so the entry takes the weakest issuer value. Verification is a Schnorr check with no network. NIP-98 is marked draft in the NIPs repository. The Nostr carrier has its own entry."
+
+[scheme."vnd.world.world-id"]
+name = "World ID"
+kind = "attestation"
+role = "attestation"
+status = "provisional"
+source = "overview, Plug catalogue: World ID"
+spec = "https://docs.world.org/world-id"
+binding = "A"
+use = "rate"
+properties = { theft = "bearer", link-actions = "linkable", issuer = "third-party", verify = "online", pq = "no", maturity = "experimental" }
+local_id = "the nullifier hash for the action"
+quota_id = ""
+verifiers = ["local"]
+body = "the World ID proof, with the Context as its signal"
+witness = "none: class A; the proof sits in the body and covers the Context, not the Digest"
+conformance = ""
+notes = "The nullifier is stable per person and action, so the rate model can count it, and actions under one action ID are linkable to each other. A quota could count it too; quota_id stays empty until the adapter spec names the action. Proofs are checked through World's verifier, so online."
+
+# ------------------------------------------------------------ does not fit
+
+[scheme."vnd.cloudflare.pay-per-crawl"]
+name = "Cloudflare pay per crawl"
+kind = "credential"
+role = "value"
+status = "does-not-fit"
+source = "overview, Plug catalogue: Cloudflare pay-per-crawl"
+spec = "https://developers.cloudflare.com/ai-crawl-control/features/pay-per-crawl/what-is-pay-per-crawl/"
+reason = "Its payment side is closed: Cloudflare is the merchant of record and settles with the crawler on its own account, so the gate receives no payment artifact it can verify, bind to an offer or commit."
+notes = "Fits only as a Pricer signal, as the overview says: its 402 price can inform what a BNAP route charges. In closed beta when checked."
+
+[scheme."vnd.google.ap2"]
+name = "Agent Payments Protocol (AP2), as a direct per-action payment"
+kind = "credential"
+role = "value"
+status = "does-not-fit"
+source = "overview, Plug catalogue: introduction and the AP2 mandates row"
+spec = "https://ap2-protocol.org"
+reason = "AP2 authorizes a payment with signed mandates and leaves the payment itself to another method, cards in its first version, so it carries no value proof the gate can verify for one action."
+notes = "AP2 mandates do fit, as a client spend policy, which is a client plug and has no registry entry. A payment method that AP2 drives, such as a card through MPP, is registered under that method."
