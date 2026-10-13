@@ -202,7 +202,7 @@ class BrokenCopy(unittest.TestCase):
 
     def test_non_ascii(self):
         self.edit("carriers.toml", 'notes = "Optional carrier; no BNAP carrier note yet."',
-                  'notes = "Optional carrier — no BNAP carrier note yet."')
+                  'notes = "Optional carrier \u2014 no BNAP carrier note yet."')
         self.assertFails("non-ASCII")
 
     # the spec's worked examples
