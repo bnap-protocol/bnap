@@ -218,7 +218,7 @@ The scheme runs these checks in this order, cheapest first. The first failure en
 1. **Form.** The body and witness pass 3.5 (`NON_CANONICAL`). The body holds `inputs` or `fund` (`EMPTY`). There are at most `max_inputs` inputs and at most `max_outputs` outputs (`LIMIT`).
 2. **Keysets.** Every input's keyset is listed in the offer's `keysets`, is known to the issuer, is not revoked, and `now` is before its `final_expiry` plus 60 seconds: draft-00 section 2 allows 60 seconds of clock skew on every expiry check, this one included. Every output's keyset is listed with `active` and is not revoked (`UNKNOWN_KEYSET`). The offer can only narrow what the issuer's live table allows: a keyset revoked after the offer was made is refused.
 3. **Amounts.** Every amount is a power of two for which its keyset has a key (`BAD_AMOUNT`).
-4. **Fund.** If the body holds `fund`, the quote exists, has method `bolt11` and unit `sat`, carries a NUT-20 `pubkey`, and is paid in full (`QUOTE_UNPAID`). Verification does not ask whether the quote has issued: the RailId commit decides that atomically (8.4, 8.5), so a quote used before gives SPENT at commit, and a replay of the same credential still reaches the socket's replay path (provisional).
+4. **Fund.** If the body holds `fund`, the quote exists, has method `bolt11` and unit `sat`, carries a NUT-20 `pubkey`, and is paid in full (`QUOTE_UNPAID`). Verification does not ask whether the quote has issued: the RailId commit decides that atomically (8.4, 8.5), so a quote used before gives SPENT at commit, and a replay of the same credential still reaches the socket's replay path (provisional). That replay verifies only while the quote record and the rail's confirmation of its payment still exist, which 8.6 guarantees until the replay can no longer arrive.
 5. **Value and outputs.** The value of 6.3 is defined, and the outputs form a complete ladder that covers it (`BAD_AMOUNT` or `BAD_OUTPUTS`).
 6. **Witness.** The i-th signature of `input_sigs` verifies under the i-th input's `K` over the Digest, and `fund_sig` verifies under the quote's `pubkey` (`BAD_SIGNATURE`).
 7. **Notes.** For every input, `C = a·hash_to_curve(hex(K))` for the key `a` of its keyset and amount, checked by the signer (`BAD_SIGNATURE`).
@@ -367,11 +367,19 @@ mint(quote, outputs):
   return sigs
 ```
 
-A mint commit has no outcome record and no PENDING state, because signing comes before the transaction and the transaction is the whole operation. A retry with the same quote and outputs is recognized before the output check, and gets the same signatures, as NUT-19 cached responses would give, because signing is deterministic. An abort consumes nothing: the quote stays mintable, and a client whose outputs were refused derives fresh ones and signs a new NUT-20 request. The issuer keeps the RailId record at least as long as the quote record.
+A mint commit has no outcome record and no PENDING state, because signing comes before the transaction and the transaction is the whole operation. A retry with the same quote and outputs is recognized before the output check, and gets the same signatures, as NUT-19 cached responses would give, because signing is deterministic. An abort consumes nothing: the quote stays mintable, and a client whose outputs were refused derives fresh ones and signs a new NUT-20 request. The issuer keeps the RailId record at least as long as the quote record, and the quote record at least as long as the RailId record (8.6).
 
 ### 8.6 Quote state
 
 The use store is the authority on whether a quote has issued: a quote is issued exactly when its RailId is committed, by a credential or by a mint. The issuer's NUT-23 quote check MUST then report `amount_issued` equal to `amount`, and the deprecated `state` as `ISSUED`.
+
+**Retention.** Every verification of a credential that redeems a quote, replays included, reads the quote record (6.2, step 4) and asks the rail to confirm the quote's payment (6.4). A replay of a committed funded credential therefore reaches the socket's replay path (draft-00 6.4) only while both still answer; if either is gone, the replay fails with `QUOTE_UNPAID` before commit, and the client loses the stored response, a missed receipt and the timeout refund (draft-00 6.4, 7.5). Therefore (provisional):
+
+- the issuer MUST keep each quote record, with its amount, `pubkey`, payment hash and paid state, for as long as the quote's RailId record, so that the two are deleted together (8.5);
+- when a credential commits the RailId, the issuer MUST keep both at least until 60 seconds after the deadline (5.4) of that credential's notes entry, the last moment a replay of it can pass the expiry check of draft-00 4.4. A gate can store that time with the RailId when it commits, or keep every redeemed quote for the longest lifetime of any notes offer it issues, plus 60 seconds, after the commit;
+- the rail MUST be able to confirm the payment for as long. A rail plug whose Lightning node prunes settled invoices answers from the paid state that the quote record holds.
+
+A quote minted through NUT-04 needs no such time, because a mint has no replay beyond the NUT-04 retry (8.5). If the draft-00 erratum of 5.4 lets replays through after the deadline, the bound becomes `replay_window` after the commit.
 
 ## 9. Input fees
 
@@ -382,7 +390,7 @@ Input fees follow NUT-02: each input contributes its keyset's `input_fee_ppk`, a
 - **Lifecycle.** A keyset is published, with its keys served but not active, at least 30 days before it signs anything. It then signs outputs for about 3 months, then accepts inputs only, and reaches its `final_expiry` about 15 months after it started signing. Once `final_expiry` plus the 60 seconds of skew has passed (6.2, step 2), it is never accepted again.
 - **Standby.** The operator always keeps at least one published keyset that is not yet active, so that a compromised keyset can be replaced at once.
 - **Revocation.** A compromised keyset leaves the `keysets` of every new offer and the issuer's live table at once, and inputs and outputs on it are refused from then on (`UNKNOWN_KEYSET`). The operator cannot tell honest notes on that keyset from forged ones, so their holders lose them; this is an accepted residual risk (section 17).
-- **Retention.** A note still verifies for 60 seconds after its keyset's `final_expiry`, because draft-00 section 2 allows that skew on every expiry check (6.2, step 2). Its single-use record therefore stays in the use store until `final_expiry` plus 60 seconds, which is how long draft-00 6.2 requires: a record deleted at `final_expiry` itself would let a note that still verifies be spent a second time. Signed-output records stay until the output keyset's `final_expiry` plus 60 seconds (NUT-09). After that the issuer MAY delete both, as NUT-02 allows.
+- **Retention.** A note still verifies for 60 seconds after its keyset's `final_expiry`, because draft-00 section 2 allows that skew on every expiry check (6.2, step 2). Its single-use record therefore stays in the use store until `final_expiry` plus 60 seconds, which is how long draft-00 6.2 requires: a record deleted at `final_expiry` itself would let a note that still verifies be spent a second time. Signed-output records stay until the output keyset's `final_expiry` plus 60 seconds (NUT-09). After that the issuer MAY delete both, as NUT-02 allows. Quote records and their RailId records are kept as 8.6 says.
 - **Offers and expiry.** An offer lists only keysets whose `final_expiry` is later than its `expires` plus 60 seconds (5.2). The issuer MUST keep signing on a keyset for as long as an unexpired offer lists it as `active`, unless the keyset is revoked.
 - **Consistent keys.** Clients compare the full key list of each keyset from a second vantage point, such as another network path or a published mirror, and SHOULD NOT accept change on a keyset whose keys differ between them; this catches keys made to tag one user. The 30-day publication rule gives them time to do so.
 - **Wallets.** A wallet SHOULD swap notes on a keyset that is within 30 days of its `final_expiry` into an active keyset (section 11). An operator announces retirement or shutdown at least 30 days ahead through the keyset's `final_expiry`.
@@ -554,6 +562,7 @@ The socket's considerations (draft-00 section 12) apply. These are the scheme's 
 | Invoice minting as denial of service | Funding only on `BNAP-Fund`, capped, one quote per offer nonce, rate-limited per address (8.2) |
 | Change withheld or miscounted | The deterministic selection (7.2), checked by the client against the signed Response |
 | A timeout refund or missed change lost because the offer expired | The admission cutoff (5.4) and prompt replays (7.5) |
+| A replay of a funded credential failing because the quote record or the rail's record of its payment was pruned | Both kept at least 60 seconds past the deadline of the entry that committed the quote (8.6) |
 | A replay or crash paying change twice | The socket's single settle write and stored `scheme_result` (draft-00 6.4); deterministic signing (7.4) |
 
 **Output front-running.** Someone who sees a credential in transit or in a log can copy its `B'` values into a credential of its own, for example a price-0 swap (section 11) whose change is one of the victim's outputs, and have it settle first, even while the victim's action is still running. This gains it nothing and costs the victim nothing. The front-runner cannot unblind what it gets back, so the output it spent its own value on is lost to it. The victim's credential is unaffected at every stage, because verification never consults the signed-output table (6.2): before commit it is admitted as usual; after commit, a replay still reaches the socket's replay path, so a PENDING answer, the stored response, a missed receipt and a timeout refund all stay available (draft-00 6.4, 7.5); and its settlement signs each of its `B'` under its own keyset and amount (7.4), which only the victim can unblind. Had verification rejected outputs signed before, as v0.4 did, the same copy would have turned every replay of a committed credential into BAD\_CREDENTIAL, and the victim would have lost its change or its whole refund.
@@ -696,7 +705,7 @@ The exact offer lives 10 minutes. With the default `pending_timeout` of 300 s, i
 
 ## Appendix B. Provisional decisions
 
-Each of these is marked "(provisional)" where it is made, and each is open to owner review. They are numbered in the order of the sections that make them; the rows of section 19 that say "(provisional)" restate P4, P11, P12, P25, P27 and P29, except the one for P30, which section 19 makes.
+Each of these is marked "(provisional)" where it is made, and each is open to owner review. They are numbered in the order of the sections that make them; the rows of section 19 that say "(provisional)" restate P4, P11, P12, P26, P28 and P30, except the one for P31, which section 19 makes.
 
 | # | Where | Decision |
 | --- | --- | --- |
@@ -724,9 +733,10 @@ Each of these is marked "(provisional)" where it is made, and each is open to ow
 | P22 | 8.1 | The `BNAP-Fund` request field, an RFC 9651 Dictionary, needs registering |
 | P23 | 8.2 | One quote per offer nonce and a per-address rate limit are MUST, as DECISIONS row 24 sets for natives |
 | P24 | 8.5 | BNAP quotes require a NUT-20 key; NUT-04 minting commits the RailId under `rk_mint` in one transaction |
-| P25 | 11 | Swaps use a price-0 manifest route with id `notes-swap`, answered by the gate |
-| P26 | 12.1 | Derivation type `0x02` for note keys; the counter's top 16 bits name the slot |
-| P27 | 12.2 | Wallets record their counters in the backup; restore scans at least that far |
-| P28 | 13.2 | `UNIT_MISMATCH` folds into `UNKNOWN_KEYSET` |
-| P29 | 15 | Wallets SHOULD bind whenever they can read `tls-exporter`, where v0.4 said agents and native clients MUST; a wallet may retry without a binding after a BINDING error |
-| P30 | 19 | Suites 1 to 3 become their own scheme IDs |
+| P25 | 8.6 | A quote record lives as long as its RailId record, and both, with the rail's confirmation of the payment, last at least until 60 s after the deadline of the entry under which a credential committed the RailId, so replays of funded credentials still verify |
+| P26 | 11 | Swaps use a price-0 manifest route with id `notes-swap`, answered by the gate |
+| P27 | 12.1 | Derivation type `0x02` for note keys; the counter's top 16 bits name the slot |
+| P28 | 12.2 | Wallets record their counters in the backup; restore scans at least that far |
+| P29 | 13.2 | `UNIT_MISMATCH` folds into `UNKNOWN_KEYSET` |
+| P30 | 15 | Wallets SHOULD bind whenever they can read `tls-exporter`, where v0.4 said agents and native clients MUST; a wallet may retry without a binding after a BINDING error |
+| P31 | 19 | Suites 1 to 3 become their own scheme IDs |
