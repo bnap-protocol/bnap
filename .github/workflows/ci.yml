@@ -141,3 +141,9 @@ jobs:
         with:
           tool: mdbook@0.5
       - run: mdbook build book
+      # The spec links to ../reference/ and ../vectors/; pages.yml publishes
+      # both next to the book, so do the same here before checking links.
+      - name: Add the files the spec links to
+        run: cp -R reference vectors book/book/
+      - name: Check links
+        run: python3 -I book/linkcheck.py book/book
