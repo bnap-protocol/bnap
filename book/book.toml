@@ -1,0 +1,22 @@
+[book]
+title = "BNAP specification"
+description = "BNAP, an open protocol for paying for and authorizing machine-to-machine requests over HTTP and MCP."
+authors = ["BNAP contributors"]
+language = "en"
+src = "src"
+
+[build]
+# A missing chapter is an error. Without this, mdbook would create an empty
+# file for it, which for the spec pages would be a stray file in src/spec/.
+create-missing = false
+# The default "index" preprocessor renames every README.md chapter to
+# index.html, which breaks the spec's own links to README.md (for example in
+# ERRATA.md). Run only the "links" preprocessor, which expands the includes;
+# the book's front page is index.md instead.
+use-default-preprocessors = false
+
+[preprocessor.links]
+
+[output.html]
+site-url = "/bnap/"
+git-repository-url = "https://github.com/bnap-protocol/bnap"

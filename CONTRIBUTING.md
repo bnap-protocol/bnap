@@ -59,6 +59,35 @@ Normative changes to the protocol should start as an issue that explains the
 problem, so the design can be discussed before text is written. Changes that
 affect behavior need matching updates to the test vectors.
 
+A new file under `spec/` also needs a page in the book: a file at the same
+path under `book/src/` holding the single line
+`{{#include <relative path to the spec file>}}`, and an entry in
+`book/src/SUMMARY.md`. CI fails when either is missing, so the rendered book
+always covers every spec file without copying its text.
+
+## Checks before a pull request
+
+CI (`.github/workflows/ci.yml`) runs these on every push and pull request to
+`develop` and `main`. Run them locally first:
+
+```sh
+ops/leak-guard.sh
+# The reference must reproduce the committed vectors byte for byte:
+python3 -I reference/python/bnap_ref.py | diff - vectors/vectors.json
+mdbook build book    # needs mdBook 0.5
+```
+
+| Job | What it checks |
+| --- | --- |
+| Leak guard | `ops/leak-guard.sh` over the tracked files and every new commit; on pull requests, a `Signed-off-by` line on every non-merge commit |
+| Test vectors | `reference/python/bnap_ref.py` regenerates `vectors/vectors.json`, compared after JSON normalisation and then byte for byte, on an older and the newest Python 3 |
+| Registry | `python3 -I registry/validate.py --check` and `python3 -I registry/test_validate.py`, once they exist (Python 3.11 or later) |
+| Book | Every spec file has its include page and SUMMARY entry, `mdbook build book` succeeds, and the built book has no broken relative links |
+
+Every push to `main` also publishes the book to GitHub Pages
+(`.github/workflows/pages.yml`). Dependabot keeps the workflow actions
+current with weekly pull requests against `develop`.
+
 ## Licensing of contributions
 
 Unless you explicitly state otherwise, specification text you contribute is
