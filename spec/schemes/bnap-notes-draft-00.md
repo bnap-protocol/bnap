@@ -23,7 +23,7 @@ The key words MUST, MUST NOT, REQUIRED, SHOULD, SHOULD NOT, RECOMMENDED, MAY and
 
 ### 2.1 Notation
 
-Every notation of draft-00 section 2 applies unchanged: `H`, `H_tag`, `‖`, BigSize, `tu64`, `lp`, TLV stream, entry list, flag, Key, Signature, `b64u` and empty. In addition:
+Every notation of draft-00 section 2 applies: `H`, `H_tag`, `‖`, BigSize, `tu64`, `lp`, TLV stream, entry list, flag, Key, Signature, `b64u` and empty. One error code changes. Draft-00's BigSize and `tu64` rows make a non-minimal encoding MALFORMED (2), the socket's code for its own streams. The notes body and witness are opaque bytes to the socket (draft-00 section 2, "One encoding"), parsed only by the scheme, and draft-00 5.1 makes the scheme reject alternative encodings of a body; 3.5 applies the same rules to the witness. A non-minimal BigSize or `tu64` inside them, like every other encoding error there, is therefore a scheme rejection, BAD\_CREDENTIAL (10) with `bnap:notes/NON_CANONICAL` (3.5, 13.1), and never MALFORMED (provisional). The socket's own streams, the pay record around the body and witness included, keep MALFORMED. In addition:
 
 | Notation | Meaning |
 | --- | --- |
@@ -102,7 +102,7 @@ Each signature is a BIP-340 signature over the 32-byte Digest of draft-00 5.2. `
 
 ### 3.5 Canonical form
 
-Draft-00 5.1 requires a scheme to reject a body that contains any byte it does not verify. The body and the witness MUST therefore be rejected with `bnap:notes/NON_CANONICAL` (section 13) when any of these holds:
+Draft-00 5.1 requires a scheme to reject a body that contains any byte it does not verify. The body and the witness MUST therefore be rejected with BAD\_CREDENTIAL and `bnap:notes/NON_CANONICAL` (section 13), not with socket MALFORMED (2.1), when any of these holds:
 
 - a framing error: a truncated record or entry, a non-minimal BigSize or tu64, types not strictly increasing, or bytes left over;
 - a record type not listed in 3.1 to 3.4, even or odd. The even/odd rule of draft-00 section 2 governs socket streams; inside a notes body or witness every unknown record is rejected, GREASE included (provisional reading: a client puts its GREASE in the socket streams, never in a scheme body);
@@ -438,7 +438,7 @@ Every scheme error is sent with socket code BAD\_CREDENTIAL (10, HTTP 402) and o
 
 | scheme\_code | Meaning | Client action |
 | --- | --- | --- |
-| `bnap:notes/NON_CANONICAL` | The body or witness breaks 3.5 | Fix the encoder |
+| `bnap:notes/NON_CANONICAL` | The body or witness breaks 3.5, for example with a non-minimal BigSize or `tu64`, which inside them is this code and not socket MALFORMED (2.1) | Fix the encoder |
 | `bnap:notes/EMPTY` | The body has neither inputs nor fund | Add notes or a fund quote |
 | `bnap:notes/LIMIT` | More inputs or outputs than `max_inputs` or `max_outputs` | Swap into fewer notes first |
 | `bnap:notes/UNKNOWN_KEYSET` | An input keyset is not in the offer, unknown, revoked or past its final expiry, or an output keyset is not active | Refresh the offer and keysets; swap old notes |
@@ -456,7 +456,7 @@ A rail that cannot be reached gives UNAVAILABLE (15), never admission (draft-00 
 | v0.4 code | Now |
 | --- | --- |
 | `VERSION` | Socket VERSION (1) |
-| `MALFORMED` | Socket MALFORMED (2) for the socket streams; `bnap:notes/NON_CANONICAL` or `bnap:notes/EMPTY` for the body |
+| `MALFORMED` | Socket MALFORMED (2) for the socket streams; `bnap:notes/NON_CANONICAL` or `bnap:notes/EMPTY` for the body and witness, non-minimal integers included (2.1) |
 | `TOO_LARGE` | Socket TOO\_LARGE (3) for sizes; `bnap:notes/LIMIT` for counts |
 | `UNKNOWN_KEYSET` | `bnap:notes/UNKNOWN_KEYSET` |
 | `UNIT_MISMATCH` | `bnap:notes/UNKNOWN_KEYSET`: only `sat` keysets are ever listed (provisional) |
@@ -682,6 +682,7 @@ In these places draft-00, read literally, contradicts itself or leaves its own e
 | Draft-00 says | This document | Why |
 | --- | --- | --- |
 | Section 2: `tu64` writes 0 as the empty string, and an absent record and a present one with an empty value MUST mean the same. The canonical rule of 5.1 covers bodies, not a scheme's `scheme_result` | The `index` of output 0 is a present record with an empty value, `00 00`; a client reads an entry without `index` as index 0 (7.3) (provisional) | Without one form, two gates send different bytes for the same settlement, although the ack signs them (draft-00 8.1), settlement must be deterministic (draft-00 6.4) and the vectors of 18.2 item 6 are byte-exact. Draft-00's own vectors write the Required `status` 0 as a present empty record |
+| Section 2: a non-minimal BigSize or `tu64` is MALFORMED (2, HTTP 400) | Inside the notes body and witness it is BAD\_CREDENTIAL (10, HTTP 402) with `bnap:notes/NON_CANONICAL`; MALFORMED stays for the socket streams (2.1, 3.5, 13.1) (provisional) | The body and witness are opaque to the socket (draft-00 section 2), only the scheme parses them, and draft-00 5.1 makes rejecting alternative encodings of a body the scheme's job. BAD\_CREDENTIAL is the code for a scheme's rejection (draft-00 8.2), and its `scheme_code` tells the client which encoder to fix |
 
 ## Appendix A. HTTP example (informative)
 
@@ -724,7 +725,7 @@ The exact offer lives 10 minutes. With the default `pending_timeout` of 300 s, i
 
 ## Appendix B. Provisional decisions
 
-Each of these is marked "(provisional)" where it is made, and each is open to owner review. P1 to P31 are numbered in the order of the sections that make them. From P32 on, a number is never reassigned: each later decision takes the next free number, wherever it is made, so that references to earlier numbers stay valid. The rows of 19.1 that say "(provisional)" restate P4, P11, P12, P26, P28 and P30, except the one for P31, which 19.1 makes; the row of 19.2 that says "(provisional)" restates P32.
+Each of these is marked "(provisional)" where it is made, and each is open to owner review. P1 to P31 are numbered in the order of the sections that make them. From P32 on, a number is never reassigned: each later decision takes the next free number, wherever it is made, so that references to earlier numbers stay valid. The rows of 19.1 that say "(provisional)" restate P4, P11, P12, P26, P28 and P30, except the one for P31, which 19.1 makes; the rows of 19.2 that say "(provisional)" restate P32 and P33.
 
 | # | Where | Decision |
 | --- | --- | --- |
@@ -760,3 +761,4 @@ Each of these is marked "(provisional)" where it is made, and each is open to ow
 | P30 | 15 | Wallets SHOULD bind whenever they can read `tls-exporter`, where v0.4 said agents and native clients MUST; a wallet may retry without a binding after a BINDING error |
 | P31 | 19.1 | Suites 1 to 3 become their own scheme IDs |
 | P32 | 7.3 | Required records of `scheme_result` are written even when empty, so the `index` of output 0 is a present empty record; optional empty records are left out; a client reads an absent `index` as 0 |
+| P33 | 2.1 | A non-minimal BigSize or `tu64` inside a notes body or witness is BAD\_CREDENTIAL with `bnap:notes/NON_CANONICAL`, not the socket MALFORMED that draft-00 section 2 names |
