@@ -11,7 +11,7 @@
 
 ## 1. Status and scope
 
-**Status.** Working draft 00 of the `bnap:notes` credential scheme. It restates the v0.4 Cashu profile ([bnap-notes.md](bnap-notes.md)) and the `bnap:notes` section of the v0.5.1 overview ([overview-v0.5.md](../overview-v0.5.md)) as a plug for the socket of [socket-draft-00.md](../socket-draft-00.md) ("draft-00" below). Where those texts and draft-00 differ, draft-00 wins; section 19 lists every such difference. Every choice this document had to make that none of its sources settles is marked "(provisional)" and collected in Appendix B for owner review.
+**Status.** Working draft 00 of the `bnap:notes` credential scheme. It restates the v0.4 Cashu profile ([bnap-notes.md](bnap-notes.md)) and the `bnap:notes` section of the v0.5.1 overview ([overview-v0.5.md](../overview-v0.5.md)) as a plug for the socket of [socket-draft-00.md](../socket-draft-00.md) ("draft-00" below). Where those texts and draft-00 differ, draft-00 wins; section 19 lists every such difference, and also the places where this document follows one passage of draft-00 against the literal wording of another (19.2). Every choice this document had to make that none of its sources settles is marked "(provisional)" and collected in Appendix B for owner review.
 
 **Scope.** This document defines everything the socket leaves to the scheme: the body and witness bytes (section 3, the section the draft-00 registry example points to), the Note format, the pay entry parameters, verification, the change and refund outputs, funding inside a 402, input fees, keyset rotation, swaps, seed recovery, the scheme's error codes, its registry entry and its test-vector requirements. It does not restate the socket: the Offer, the Credential envelope, the Context, Digest and ReplayKey, the use store, pricing, the Response and its receipt are as draft-00 defines them, and this document only says what the scheme puts into them and takes out of them.
 
@@ -112,7 +112,7 @@ Draft-00 5.1 requires a scheme to reject a body that contains any byte it does n
 - two outputs with the same `blinded` point;
 - a witness whose records do not match the body: `input_sigs` present without `inputs`, absent with them, or not exactly 64 bytes per input; `fund_sig` present without `fund`, or absent with it.
 
-A body or witness that passes these checks has exactly one encoding.
+A body or witness that passes these checks has exactly one encoding. The `scheme_result` of 7.3 follows the same rules, except for the one empty value that 7.3 defines.
 
 ### 3.6 Sizes
 
@@ -286,12 +286,14 @@ A signature entry:
 
 | Type | Name | Value |
 | --- | --- | --- |
-| 0 | index | tu64: the zero-based index of the output in the body. Required |
+| 0 | index | tu64: the zero-based index of the output in the body. Required, for index 0 too, whose value is empty |
 | 2 | C\_ | Point: `C' = a·B'` for that output's keyset and amount. Required |
 | 4 | e | 32 bytes: the NUT-12 DLEQ challenge. Required |
 | 6 | s | 32 bytes: the NUT-12 DLEQ response. Required |
 
 When the change is 0 the scheme returns empty bytes and the Response omits record 16 (provisional). The Response's ack signs the whole `scheme_result` (draft-00 8.1), so a wrong change is attributable.
+
+**Encoding.** The gate writes `scheme_result` canonically, under the rules 3.5 sets for a body, so that the same settlement always gives the same bytes (7.4) and every client parses them one way. One value in it can be empty: `tu64` writes 0 as the empty string (draft-00 section 2), so the entry for the first output has an `index` record with an empty value. A Required record is always written, empty or not, and an optional record whose value is empty is left out, as record 16 is above. A gate therefore MUST write the `index` of output 0 as a present record with an empty value, the two bytes `00 00`, and MUST NOT leave it out; draft-00's own vectors write the Required `status` record of an OK Response the same way, as `02 00`. The stream of a signature entry is then 105 bytes for index 0, starting `00 00 02 21`, and 106 bytes for an index from 1 to 255, starting `00 01`, the index byte, `02 21`; with its length prefix an entry is 106 or 107 bytes. Draft-00 section 2 also says an absent record and an empty one MUST mean the same, so a client MUST read a signature entry without an `index` record as index 0, and MUST NOT reject the Response for that alone; those bytes still break this section, and the signed Response shows it (provisional).
 
 The client knows `value` from its own body and the offer, and `charged` from the Response, so it recomputes `select` itself. It MUST check that the signed indices equal its own result, MUST verify every DLEQ proof against the keyset key `A` for that amount (NUT-12), and only then unblinds `C = C' - r·A`. A mismatch is the operator's fault, and the signed Response is the evidence.
 
@@ -641,7 +643,9 @@ The vectors MUST include:
 8. **A reused output:** a credential one of whose `B'` already has a signed-output record under another source. It verifies, and its settlement signs that `B'` again, with the same `C'` and DLEQ proof when keyset and amount match, and adds a second record (6.2, 7.4).
 9. **Negative vectors**, each with the expected `scheme_code`: inputs out of order; a repeated `K`; two outputs with one `B'`; an unknown odd record in the body; a record with an empty value; a short keyset ID; a non-power-of-two amount; an incomplete ladder; a ladder whose total is below the value; fees above the inputs; `input_sigs` of the wrong length; `fund` without `fund_sig`; a witness signature over another Digest; a note whose `C` does not verify; an output keyset that is not active.
 
-## 19. Changes from the v0.4 scheme
+## 19. Differences from the sources
+
+### 19.1 Changes from the v0.4 scheme
 
 Draft-00 wins over the v0.4 text and the overview in each of these places:
 
@@ -670,6 +674,14 @@ Draft-00 wins over the v0.4 text and the overview in each of these places:
 | Spend store: 16-byte prefix of Y with a 16-byte Digest tag | The socket's use store with full UseIds, plus the scheme's signed-output table (7.4) | Draft-00 6.3 |
 | Restore stops after `3 × max_outputs` unsigned counters | NUT-13's three empty batches of 100, plus a recorded counter in the backup (12.2) (provisional) | NUT-13; ladders can leave long gaps |
 | DLEQ nonce must be deterministic (BNAP's own rule) | NUT-12's deterministic nonce, made a MUST (7.4) | NUT-12 now defines one |
+
+### 19.2 Readings of draft-00's own text
+
+In these places draft-00, read literally, contradicts itself or leaves its own encoding rules open, and this document follows the rule named in the last column. Each is proposed as a draft-00 erratum.
+
+| Draft-00 says | This document | Why |
+| --- | --- | --- |
+| Section 2: `tu64` writes 0 as the empty string, and an absent record and a present one with an empty value MUST mean the same. The canonical rule of 5.1 covers bodies, not a scheme's `scheme_result` | The `index` of output 0 is a present record with an empty value, `00 00`; a client reads an entry without `index` as index 0 (7.3) (provisional) | Without one form, two gates send different bytes for the same settlement, although the ack signs them (draft-00 8.1), settlement must be deterministic (draft-00 6.4) and the vectors of 18.2 item 6 are byte-exact. Draft-00's own vectors write the Required `status` 0 as a present empty record |
 
 ## Appendix A. HTTP example (informative)
 
@@ -712,7 +724,7 @@ The exact offer lives 10 minutes. With the default `pending_timeout` of 300 s, i
 
 ## Appendix B. Provisional decisions
 
-Each of these is marked "(provisional)" where it is made, and each is open to owner review. They are numbered in the order of the sections that make them; the rows of section 19 that say "(provisional)" restate P4, P11, P12, P26, P28 and P30, except the one for P31, which section 19 makes.
+Each of these is marked "(provisional)" where it is made, and each is open to owner review. P1 to P31 are numbered in the order of the sections that make them. From P32 on, a number is never reassigned: each later decision takes the next free number, wherever it is made, so that references to earlier numbers stay valid. The rows of 19.1 that say "(provisional)" restate P4, P11, P12, P26, P28 and P30, except the one for P31, which 19.1 makes; the row of 19.2 that says "(provisional)" restates P32.
 
 | # | Where | Decision |
 | --- | --- | --- |
@@ -746,4 +758,5 @@ Each of these is marked "(provisional)" where it is made, and each is open to ow
 | P28 | 12.2 | Wallets record their counters in the backup; restore scans at least that far |
 | P29 | 13.2 | `UNIT_MISMATCH` folds into `UNKNOWN_KEYSET` |
 | P30 | 15 | Wallets SHOULD bind whenever they can read `tls-exporter`, where v0.4 said agents and native clients MUST; a wallet may retry without a binding after a BINDING error |
-| P31 | 19 | Suites 1 to 3 become their own scheme IDs |
+| P31 | 19.1 | Suites 1 to 3 become their own scheme IDs |
+| P32 | 7.3 | Required records of `scheme_result` are written even when empty, so the `index` of output 0 is a present empty record; optional empty records are left out; a client reads an absent `index` as 0 |
