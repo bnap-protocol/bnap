@@ -174,8 +174,10 @@ kept in the BNAP repository {{BNAP-REPO}}, file
 `spec/socket-draft-00.md` at doc revision 39.  The normative text is
 the same.  Symbols are written in ASCII (`||` for concatenation,
 `ceil()` and `floor()` for rounding, `_1` for subscripts), and long
-code lines are wrapped.  Where the two differ, the repository file is
-the reference until this draft replaces it.
+code lines are wrapped.  Comments that draft-00 sets off from code by
+spacing alone are marked with `#` here, so that a comment moved onto
+its own line cannot be read as a statement.  Where the two differ,
+the repository file is the reference until this draft replaces it.
 
 # Conventions {#conventions}
 
@@ -423,7 +425,7 @@ ReplayKey = H_"bnap/replay"( Context || H(pay body, or empty)
                              || H(attest body_1) || ...
                              || H(attest body_n)
                              || BigSize(m) || id_1 || ... || id_m )
-            ids sorted bytewise
+            # ids sorted bytewise
 ~~~
 
 The ReplayKey is the Digest without the binding, plus every UseId and RailId of every scheme in the request, whatever its use model. It therefore names one credential, sent for one request. Two clients that send the same request with different credentials never share a ReplayKey. A retry of the same credential on a new connection does share it.
@@ -457,7 +459,7 @@ The store MUST run the commit as one serializable transaction and MUST make it d
 
 ~~~ pseudocode
 commit(rk, singles, counters):
-    singles = single UseIds and RailIds; counters = (key, limit)
+    # singles = single UseIds and RailIds; counters = (key, limit)
   if outcome[rk] exists:           return Replay(outcome[rk])
   for id in singles:
       if used[id] exists:          abort, return SPENT
@@ -497,7 +499,7 @@ The offer is the quote. The Pricer runs when the gate builds an offer and writes
 
 ~~~ pseudocode
 price(base):
-    base = entry.amount, or the metered amount at settlement
+    # base = entry.amount, or the metered amount at settlement
   p = base
   for each verified attestation, in offer order, effect waive:
       p = 0
@@ -612,14 +614,14 @@ A client that missed a rotation still holds the old pin, and accepts only manife
 
 ~~~ pseudocode
 fetch(origin):
-    HTTPS only, certificate valid for origin; at most once per
-    5 minutes
+    # HTTPS only, certificate valid for origin; at most once per
+    # 5 minutes
   m = GET https://origin/.well-known/bnap
   require m.bnap == 1, m.origin == origin, m.sig valid under m.root
   require m.issued - 60 <= now <= m.issued + m.max_age + 60
   if pin[origin] is live:
       require m.root == pin.root and m.backup == pin.backup,
-           or m.root == pin.backup                     a rotation
+           or m.root == pin.backup               # a rotation
       require m.seq > pin.seq, or H(m bytes) == pin.hash
   pin[origin] = {root: m.root, backup: m.backup, seq: m.seq,
                  hash: H(m bytes), required: m.required,
@@ -686,7 +688,7 @@ A client that disconnects mid-stream is charged for what was produced. A stream 
 
 ## Example: the LLM inference proxy {#the-http-carrier-example-the-llm-inference-proxy}
 
-The operator puts the gate in front of an OpenAI-compatible endpoint. Its manifest has one route, `chat`, metered in `tokens`. It gets route-scope offers for `bnap:notes`, at 500 sat per 1,000 tokens up to 2,100 sat per call, with a 20% discount for agents that sign with Web Bot Auth. Exact-scope, non-metered L402 offers at the ceiling serve clients that have no BNAP code. Long lines in the example are wrapped as {{RFC8792}} describes.
+The operator puts the gate in front of an OpenAI-compatible endpoint. Its manifest has one route, `chat`, metered in `tokens`. It gets route-scope offers for `bnap:notes`, at 500 sat per 1,000 tokens up to 2,100 sat per call, with a 20% discount for agents that sign with Web Bot Auth. Exact-scope, non-metered L402 offers at the ceiling serve clients that have no BNAP code. Long lines in the example are wrapped as {{RFC8792}} describes, and lines that start with `#` are annotations, not part of the messages.
 
 ~~~ http-message
 =============== NOTE: '\' line wrapping per RFC 8792 ================
@@ -701,18 +703,19 @@ Content-Type: application/json
 HTTP/1.1 402 Payment Required
 WWW-Authenticate: BNAP offer="AAEBAiCGLWQeZ4E_bniyCoGqkpUZ5mqX..."
 WWW-Authenticate: BNAP offer="..."
-   (exact scope: L402, 2,100 sat, with native)
-WWW-Authenticate: L402 macaroon="<caveat: OfferID>", invoice="lnbc..."
+# (exact scope: L402, 2,100 sat, with native)
+WWW-Authenticate: L402 macaroon=\
+"<caveat bnap_offer = OfferID>", invoice="lnbc..."
 BNAP-Error: AAEBAgEQ
-   (REQUIRED)
+# (REQUIRED)
 
 POST /v1/chat/completions HTTP/1.1
 Host: api.example
 Content-Type: application/json
 BNAP-Context: <b64u Context>
 BNAP-Credential: AAEBAv0BMQABAQIghi1kHmeBP254sgqB...
-   (offer, notes worth 1,680 sat with change outputs,
-    Web Bot Auth body over BNAP-Context, binding)
+# offer, notes worth 1,680 sat with change outputs,
+# Web Bot Auth body over BNAP-Context, binding
 
 HTTP/1.1 200 OK
 Content-Type: text/event-stream
@@ -722,7 +725,7 @@ data: {"choices":[{"delta":{"content":"Hello"}}]}
 ...
 event: bnap-receipt
 data: AAEBAgAGAgFUCANzYXQKIFyGQCYfbx3jIGounNHC...
-   (OK, 850 tokens, charged 340 sat)
+# OK, 850 tokens, charged 340 sat
 ~~~
 
 The ceiling after the discount is 2,100 - 420 = 1,680 sat, so the client sends notes worth 1,680 sat. The call used 850 tokens: ceil(850 \* 500 / 1000) = 425 sat before the discount and 340 sat after it, so the notes scheme signs 1,340 sat of change. Every later call sends `offer_id` instead of the offer and reuses it until it expires, so each call is one round trip.

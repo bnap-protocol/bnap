@@ -14,7 +14,7 @@ cd ietf
 python3 -I tools/from-draft00.py ../spec/socket-draft-00.md > draft-bnap-socket.md
 ```
 
-The generator keeps the normative text and only adds the kramdown-rfc front matter, the abstract, the references, the IANA registration templates and a short security paragraph. It writes the symbols in ASCII, re-wraps code blocks to 72 columns, and keeps the section numbers of draft-00, so cross-references such as "section 5.1" stay valid. Each re-wrapped code block is pinned by a hash of its draft-00 original: if draft-00 changes a code block, the generator stops until the copy in `tools/from-draft00.py` is updated. Do not edit `draft-bnap-socket.md` by hand; change draft-00 or the generator and regenerate.
+The generator keeps the normative text and only adds the kramdown-rfc front matter, the abstract, the references, the IANA registration templates and a short security paragraph. It writes the symbols in ASCII, re-wraps code blocks to 72 columns, marks with `#` the code comments that draft-00 sets off by spacing alone (so that a comment wrapped onto its own line never reads as a statement), and keeps the section numbers of draft-00, so cross-references such as "section 5.1" stay valid. Each re-wrapped code block is pinned by a hash of its draft-00 original: if draft-00 changes a code block, the generator stops until the copy in `tools/from-draft00.py` is updated. Do not edit `draft-bnap-socket.md` by hand; change draft-00 or the generator and regenerate.
 
 ## Layout
 
