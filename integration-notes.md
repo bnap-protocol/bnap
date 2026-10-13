@@ -22,7 +22,7 @@ No code API. The contract for downstream nodes is the CI behaviour below.
 | --- | --- |
 | Leak guard | `sh ops/leak-guard.sh --pre-push origin` over the tracked files and the commits of the push or PR; on PRs also a `Signed-off-by` check on every non-merge commit (Dependabot skipped) |
 | Test vectors (Python 3.11 and 3.x) | `python3 -I reference/python/bnap_ref.py` to a temp file, then `diff` against `vectors/vectors.json` after `python3 -I -m json.tool --sort-keys` normalisation, then a raw `diff` |
-| Registry | `python3 registry/validate.py` if the file exists, after `pip install -r registry/requirements.txt` if that exists; otherwise a skip notice |
+| Registry | `python3 -I registry/validate.py --check`, then `python3 -I registry/test_validate.py`, each only if the file exists (latest Python 3); otherwise a skip notice |
 | Book | coverage check (below), `mdbook build book`, copy `reference/` and `vectors/` into the output, `python3 -I book/linkcheck.py book/book` |
 
 ## How the book renders the spec without copying it
@@ -58,11 +58,15 @@ No code API. The contract for downstream nodes is the CI behaviour below.
 3. **Never write a literal `{{#include`, `{{#rustdoc_include`,
    `{{#playground` or `{{#title` in spec text**: the links preprocessor would
    expand it. Escape it as `\{{#include ...}}` if it must appear.
-4. **Registry validator** (`registry/validate.py`): CI runs it from the
-   repository root as `python3 registry/validate.py` (no `-I`, so it can import
-   modules next to it), on the latest Python 3. It must exit non-zero on any
-   invalid entry. Third-party packages go in `registry/requirements.txt`; the
-   standard library is preferred.
+4. **Registry** (node N2's `registry/`): CI runs, from the repository root,
+   `python3 -I registry/validate.py --check` and
+   `python3 -I registry/test_validate.py` on the latest Python 3, matching the
+   commands in N2's notes. Checked against N2's branch at `0496e7f` in a
+   scratch merge: valid, export current, 27 tests pass. Keep both scripts
+   standard-library only; CI installs nothing. The root `README.md` now links
+   `registry/README.md`, which exists once N2 is merged. After that merge,
+   consider a *Registry* chapter in the book (an include page for
+   `registry/README.md` and a SUMMARY entry).
 5. **Vectors**: any change to `reference/python/bnap_ref.py` must be followed
    by regenerating `vectors/vectors.json` with
    `python3 -I reference/python/bnap_ref.py > vectors/vectors.json`. CI runs
@@ -84,6 +88,9 @@ No code API. The contract for downstream nodes is the CI behaviour below.
   `actions/deploy-pages@v5`, `taiki-e/install-action@v2`.
 
 ## Known gaps
+
+- Every node writes `integration-notes.md` at the repository root, so merging
+  N12 and N2 (and any other node) into `develop` conflicts on that file.
 
 - Nothing was pushed, so no workflow has run on GitHub yet. YAML parses
   (Ruby Psych); the vector, coverage and link-check steps were run locally.
