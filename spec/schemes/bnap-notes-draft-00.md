@@ -498,6 +498,8 @@ properties  = { theft = "key-witnessed", link-payment = "unlinkable", link-actio
 conformance = ""
 ```
 
+Two fields differ from the `bnap:notes` example in draft-00 section 11, which gives `rail_refs = "none at spend; the funding payment at minting, confirmed by the rail"` and `witness = "one BIP-340 signature per input, over the Digest"`. That example does not cover funding inside a credential (section 8). A credential that redeems a fund quote relies on the quote's Lightning payment, and draft-00 6.1 says a scheme MUST return a rail reference for every payment its credential relies on, so `rail_refs` names the `ln` reference at spend as well as at minting (6.4). The quote's NUT-20 signature is a signature over the Digest, which draft-00 5.1 puts in the witness, so `witness` names `fund_sig` too (3.4). Draft-00 6.1 and 5.1 govern, and the draft-00 example should read as this entry does (19.2).
+
 Draft-00 section 11 lists an entry only once it has a public specification, test vectors, passing conformance results and expert review. This document is the specification; `conformance` stays empty, and the entry stays unlisted, until the conformance suite has produced results for it.
 
 The property vector, weakest to strongest as the overview orders each property:
@@ -683,6 +685,7 @@ In these places draft-00, read literally, contradicts itself or leaves its own e
 | --- | --- | --- |
 | Section 2: `tu64` writes 0 as the empty string, and an absent record and a present one with an empty value MUST mean the same. The canonical rule of 5.1 covers bodies, not a scheme's `scheme_result` | The `index` of output 0 is a present record with an empty value, `00 00`; a client reads an entry without `index` as index 0 (7.3) (provisional) | Without one form, two gates send different bytes for the same settlement, although the ack signs them (draft-00 8.1), settlement must be deterministic (draft-00 6.4) and the vectors of 18.2 item 6 are byte-exact. Draft-00's own vectors write the Required `status` 0 as a present empty record |
 | Section 2: a non-minimal BigSize or `tu64` is MALFORMED (2, HTTP 400) | Inside the notes body and witness it is BAD\_CREDENTIAL (10, HTTP 402) with `bnap:notes/NON_CANONICAL`; MALFORMED stays for the socket streams (2.1, 3.5, 13.1) (provisional) | The body and witness are opaque to the socket (draft-00 section 2), only the scheme parses them, and draft-00 5.1 makes rejecting alternative encodings of a body the scheme's job. BAD\_CREDENTIAL is the code for a scheme's rejection (draft-00 8.2), and its `scheme_code` tells the client which encoder to fix |
+| Section 11, the `bnap:notes` registry example: `rail_refs = "none at spend; the funding payment at minting, confirmed by the rail"`, `witness = "one BIP-340 signature per input, over the Digest"` | `rail_refs` names kind `ln`, the invoice payment hash, at spend for a redeemed fund quote as well as at minting; `witness` adds the fund quote's NUT-20 signature (section 14) | Draft-00 6.1: a scheme MUST return a rail reference for every payment its credential relies on, and a funded credential relies on the quote's payment. Draft-00 5.1: signatures over the Digest go in the witness. The example predates funding inside a credential |
 
 ## Appendix A. HTTP example (informative)
 
