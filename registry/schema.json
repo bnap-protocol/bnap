@@ -1,0 +1,389 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/bnap-protocol/bnap/blob/develop/registry/schema.json",
+  "title": "BNAP registry source files",
+  "description": "Structure of the registry's TOML files, each read as JSON. registry/validate.py checks every file against the matching $defs entry, then runs the semantic checks a schema cannot express: value orders, applicability of each property to each entry kind, scheme ID prefix rules, uniqueness and cross references. The schema uses only the keywords validate.py implements.",
+  "anyOf": [
+    { "$ref": "#/$defs/propertiesFile" },
+    { "$ref": "#/$defs/schemesFile" },
+    { "$ref": "#/$defs/railsFile" },
+    { "$ref": "#/$defs/verifiersFile" },
+    { "$ref": "#/$defs/carriersFile" }
+  ],
+  "$defs": {
+    "text": {
+      "description": "Printable ASCII, at least one character. ASCII keeps every entry byte-identical across platforms and keeps typographic dashes out.",
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[ -~]+$"
+    },
+    "textOrEmpty": {
+      "type": "string",
+      "pattern": "^[ -~]*$"
+    },
+    "url": {
+      "type": "string",
+      "pattern": "^https?://[!-~]+$"
+    },
+    "urlOrEmpty": {
+      "anyOf": [
+        { "const": "" },
+        { "$ref": "#/$defs/url" }
+      ]
+    },
+    "format": {
+      "description": "Version of the source file layout.",
+      "const": 1
+    },
+    "kind": {
+      "enum": ["credential", "attestation", "rail", "verifier", "carrier"]
+    },
+    "status": {
+      "description": "provisional: seeded by the designated expert, no conformance results yet. experimental and standard: listed, with conformance results; equal to the entry's maturity. does-not-fit: tested against the socket and cannot plug in.",
+      "enum": ["provisional", "experimental", "standard", "does-not-fit"]
+    },
+    "propertyId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "token": {
+      "description": "A property value token, such as single, S or final-on-verification.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9-]*$"
+    },
+    "unit": {
+      "description": "A unit string of draft-00 4.1: sat, msat, an ISO 4217 code or a CAIP-19 asset ID.",
+      "anyOf": [
+        { "const": "sat" },
+        { "const": "msat" },
+        { "type": "string", "pattern": "^[A-Z]{3}$" },
+        {
+          "type": "string",
+          "pattern": "^[-a-z0-9]{3,8}:[-_a-zA-Z0-9]{1,32}/[-a-z0-9]{3,8}:[-.%a-zA-Z0-9]{1,128}(/[-.%a-zA-Z0-9]{1,78})?$"
+        }
+      ]
+    },
+    "units": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/unit" },
+      "uniqueItems": true
+    },
+    "schemeId": {
+      "description": "<registry>:<id>[@<qualifier>] or vnd.<vendor>.<name>. The per-prefix rules are in registry/README.md and enforced by validate.py.",
+      "type": "string",
+      "pattern": "^(?:[a-z][a-z0-9]*:[!-~]+|vnd\\.[!-~]+)$"
+    },
+    "railKindId": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*$"
+    },
+    "railId": {
+      "description": "<rail kind>:<system>.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*:[a-z0-9][a-z0-9-]*$"
+    },
+    "verifierId": {
+      "description": "<name>[:<variant>].",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*(?::[a-z0-9][a-z0-9-]*)?$"
+    },
+    "carrierId": {
+      "description": "A carrier name as the manifest's carriers member lists it (draft-00 9.1).",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]*$"
+    },
+    "propertyMap": {
+      "description": "Property values by property ID. Which properties are required depends on the entry kind (properties.toml applies_to); validate.py checks that.",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/propertyId" },
+      "additionalProperties": { "$ref": "#/$defs/token" }
+    },
+    "native": {
+      "description": "A native artifact kind (draft-00 4.1): its label, how it embeds the OfferID, and the native credential bytes (draft-00 5.4).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "embeds", "credential"],
+      "properties": {
+        "kind": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "embeds": { "$ref": "#/$defs/text" },
+        "credential": { "$ref": "#/$defs/text" }
+      }
+    },
+    "propertyDef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "location", "applies_to", "description", "values"],
+      "properties": {
+        "id": { "$ref": "#/$defs/propertyId" },
+        "label": { "$ref": "#/$defs/text" },
+        "location": { "enum": ["entry", "properties"] },
+        "applies_to": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["credential", "attestation", "rail", "verifier"] }
+        },
+        "description": { "$ref": "#/$defs/text" },
+        "values": {
+          "description": "Weakest first.",
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "label"],
+            "properties": {
+              "id": { "$ref": "#/$defs/token" },
+              "label": { "$ref": "#/$defs/text" }
+            }
+          }
+        }
+      }
+    },
+    "schemeEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "role", "status", "source", "spec", "notes"],
+      "properties": {
+        "name": { "$ref": "#/$defs/text" },
+        "kind": { "enum": ["credential", "attestation"] },
+        "role": { "enum": ["value", "attestation", "both"] },
+        "status": { "$ref": "#/$defs/status" },
+        "source": { "$ref": "#/$defs/text" },
+        "spec": { "$ref": "#/$defs/url" },
+        "binding": { "$ref": "#/$defs/token" },
+        "use": { "$ref": "#/$defs/token" },
+        "refund": { "$ref": "#/$defs/token" },
+        "upto": { "type": "boolean" },
+        "properties": { "$ref": "#/$defs/propertyMap" },
+        "local_id": { "$ref": "#/$defs/text" },
+        "quota_id": { "$ref": "#/$defs/textOrEmpty" },
+        "rail_refs": { "$ref": "#/$defs/text" },
+        "rail_kinds": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/railKindId" }
+        },
+        "verifiers": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/verifierId" }
+        },
+        "body": { "$ref": "#/$defs/text" },
+        "witness": { "$ref": "#/$defs/text" },
+        "native": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/native" }
+        },
+        "units": { "$ref": "#/$defs/units" },
+        "conformance": { "$ref": "#/$defs/urlOrEmpty" },
+        "notes": { "$ref": "#/$defs/text" },
+        "reason": { "$ref": "#/$defs/text" }
+      },
+      "allOf": [
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "credential" } } },
+          "then": { "properties": { "role": { "enum": ["value", "both"] }, "quota_id": { "const": "" } } },
+          "else": { "properties": { "role": { "enum": ["attestation", "both"] } } }
+        },
+        {
+          "if": { "required": ["status"], "properties": { "status": { "const": "does-not-fit" } } },
+          "then": {
+            "required": ["reason"],
+            "not": {
+              "anyOf": [
+                { "required": ["binding"] },
+                { "required": ["use"] },
+                { "required": ["refund"] },
+                { "required": ["properties"] }
+              ]
+            }
+          },
+          "else": {
+            "required": ["binding", "use", "properties", "local_id", "quota_id", "body", "witness", "verifiers", "conformance"],
+            "not": { "required": ["reason"] }
+          }
+        },
+        {
+          "if": {
+            "required": ["kind", "status"],
+            "properties": { "kind": { "const": "credential" }, "status": { "not": { "const": "does-not-fit" } } }
+          },
+          "then": { "required": ["refund", "upto", "rail_refs", "rail_kinds", "native", "units"] }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "attestation" } } },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["refund"] },
+                { "required": ["upto"] },
+                { "required": ["rail_refs"] },
+                { "required": ["rail_kinds"] },
+                { "required": ["native"] },
+                { "required": ["units"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "railKindEntry": {
+      "description": "A rail kind (draft-00 6.1 and 13): the canonical payment bytes a rail of this kind returns.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "canonical", "spec", "status"],
+      "properties": {
+        "name": { "$ref": "#/$defs/text" },
+        "canonical": { "$ref": "#/$defs/text" },
+        "spec": { "$ref": "#/$defs/url" },
+        "status": { "$ref": "#/$defs/status" }
+      }
+    },
+    "railEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "rail_kind", "status", "source", "spec", "notes"],
+      "properties": {
+        "name": { "$ref": "#/$defs/text" },
+        "kind": { "const": "rail" },
+        "rail_kind": { "$ref": "#/$defs/railKindId" },
+        "status": { "$ref": "#/$defs/status" },
+        "source": { "$ref": "#/$defs/text" },
+        "spec": { "$ref": "#/$defs/url" },
+        "properties": { "$ref": "#/$defs/propertyMap" },
+        "units": { "$ref": "#/$defs/units" },
+        "guarded": {
+          "description": "Off by default: a build feature plus an explicit setting turns it on (overview, Value rails).",
+          "type": "boolean"
+        },
+        "conformance": { "$ref": "#/$defs/urlOrEmpty" },
+        "notes": { "$ref": "#/$defs/text" },
+        "reason": { "$ref": "#/$defs/text" }
+      },
+      "if": { "required": ["status"], "properties": { "status": { "const": "does-not-fit" } } },
+      "then": { "required": ["reason"] },
+      "else": {
+        "required": ["properties", "units", "guarded", "conformance"],
+        "not": { "required": ["reason"] }
+      }
+    },
+    "verifierEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "trust", "status", "source", "spec", "notes"],
+      "properties": {
+        "name": { "$ref": "#/$defs/text" },
+        "kind": { "const": "verifier" },
+        "trust": {
+          "description": "The trust level the overview asks facilitators to declare.",
+          "enum": ["local", "non-custodial-relay", "custodial", "merchant-of-record"]
+        },
+        "status": { "$ref": "#/$defs/status" },
+        "source": { "$ref": "#/$defs/text" },
+        "spec": { "$ref": "#/$defs/url" },
+        "properties": { "$ref": "#/$defs/propertyMap" },
+        "conformance": { "$ref": "#/$defs/urlOrEmpty" },
+        "notes": { "$ref": "#/$defs/text" },
+        "reason": { "$ref": "#/$defs/text" }
+      },
+      "if": { "required": ["status"], "properties": { "status": { "const": "does-not-fit" } } },
+      "then": { "required": ["reason"] },
+      "else": {
+        "required": ["properties", "conformance"],
+        "not": { "required": ["reason"] }
+      }
+    },
+    "carrierEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "kind", "status", "source", "spec", "scope", "transport", "tls_binding", "notes"],
+      "properties": {
+        "name": { "$ref": "#/$defs/text" },
+        "kind": { "const": "carrier" },
+        "status": { "$ref": "#/$defs/status" },
+        "source": { "$ref": "#/$defs/text" },
+        "spec": { "$ref": "#/$defs/url" },
+        "scope": { "$ref": "#/$defs/text" },
+        "transport": { "$ref": "#/$defs/text" },
+        "tls_binding": {
+          "description": "Whether a gate on this carrier can usually see the client's TLS session, so that class S credentials can carry a binding (draft-00 5.3).",
+          "type": "boolean"
+        },
+        "notes": { "$ref": "#/$defs/text" },
+        "reason": { "$ref": "#/$defs/text" }
+      }
+    },
+    "propertiesFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "property"],
+      "properties": {
+        "format": { "$ref": "#/$defs/format" },
+        "property": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/propertyDef" }
+        }
+      }
+    },
+    "schemesFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "scheme"],
+      "properties": {
+        "format": { "$ref": "#/$defs/format" },
+        "scheme": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/schemeId" },
+          "additionalProperties": { "$ref": "#/$defs/schemeEntry" }
+        }
+      }
+    },
+    "railsFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "rail_kind", "rail"],
+      "properties": {
+        "format": { "$ref": "#/$defs/format" },
+        "rail_kind": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/railKindId" },
+          "additionalProperties": { "$ref": "#/$defs/railKindEntry" }
+        },
+        "rail": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/railId" },
+          "additionalProperties": { "$ref": "#/$defs/railEntry" }
+        }
+      }
+    },
+    "verifiersFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "verifier"],
+      "properties": {
+        "format": { "$ref": "#/$defs/format" },
+        "verifier": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/verifierId" },
+          "additionalProperties": { "$ref": "#/$defs/verifierEntry" }
+        }
+      }
+    },
+    "carriersFile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["format", "carrier"],
+      "properties": {
+        "format": { "$ref": "#/$defs/format" },
+        "carrier": {
+          "type": "object",
+          "propertyNames": { "$ref": "#/$defs/carrierId" },
+          "additionalProperties": { "$ref": "#/$defs/carrierEntry" }
+        }
+      }
+    }
+  }
+}
