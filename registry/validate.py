@@ -75,6 +75,25 @@ SPEC_PROPERTIES = [
     ("maturity", "properties", ["experimental", "standard"]),
 ]
 
+# Which entry kinds carry each property. This is the registry's reading of
+# draft-00 section 11 (see README, "Rules a gate applies"), pinned here for
+# the same reason as the orders: dropping a kind from a property silently
+# changes every effective vector that kind takes part in.
+APPLIES_TO = {
+    "use": ["credential", "attestation"],
+    "binding": ["credential", "attestation"],
+    "theft": ["credential", "attestation"],
+    "link-payment": ["credential", "rail"],
+    "link-actions": ["credential", "attestation"],
+    "issuer": ["credential", "attestation", "verifier"],
+    "verify": ["credential", "attestation", "verifier"],
+    "finality": ["credential", "rail", "verifier"],
+    "custody": ["credential", "rail", "verifier"],
+    "refund": ["credential"],
+    "pq": ["credential", "attestation", "rail"],
+    "maturity": ["credential", "attestation", "rail", "verifier"],
+}
+
 ENTRY_KINDS = ("credential", "attestation", "rail", "verifier", "carrier")
 FILE_KINDS = {
     "schemes": ("credential", "attestation"),
@@ -423,10 +442,13 @@ def check_properties(doc, rep):
                         + ", ".join(spec_vals) + "; found " + ", ".join(map(str, vals)))
         if p.get("location") != loc:
             rep.err(w, f"location must be {loc!r} (draft-00 section 11 entry layout)")
-        applies = [k for k in p.get("applies_to", []) if k in ENTRY_KINDS]
-        # Downstream checks always use the spec's order, so one broken file
+        if p.get("applies_to") != APPLIES_TO[pid]:
+            rep.err(w, "applies_to must be " + ", ".join(APPLIES_TO[pid])
+                    + " (the registry's applicability rule), found "
+                    + ", ".join(map(str, p.get("applies_to", []))))
+        # Downstream checks always use the pinned model, so one broken file
         # does not cascade into misleading errors elsewhere.
-        model[pid] = Prop(pid, loc, applies, spec_vals)
+        model[pid] = Prop(pid, loc, APPLIES_TO[pid], spec_vals)
     missing = [x for x, _, _ in SPEC_PROPERTIES if x not in seen]
     if missing:
         rep.err(where, "missing spec properties: " + ", ".join(missing))
@@ -437,7 +459,7 @@ def check_properties(doc, rep):
                 + ", ".join(expected) + "; found " + ", ".join(order))
     for pid, loc, vals in SPEC_PROPERTIES:
         if pid not in model:
-            model[pid] = Prop(pid, loc, [], vals)
+            model[pid] = Prop(pid, loc, APPLIES_TO[pid], vals)
     return model
 
 

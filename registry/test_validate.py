@@ -87,6 +87,13 @@ class BrokenCopy(unittest.TestCase):
                   '  { id = "reversible", label = "reversible" },\n')
         self.assertFails("finality: values in the wrong order")
 
+    def test_applies_to_pinned(self):
+        self.edit("properties.toml", 'applies_to = ["credential", "rail", "verifier"]\n'
+                  'description = "When the value received',
+                  'applies_to = ["credential", "verifier"]\n'
+                  'description = "When the value received')
+        self.assertFails("finality: applies_to must be credential, rail, verifier")
+
     # unknown properties and values
 
     def test_unknown_property_in_entry(self):
