@@ -138,3 +138,5 @@ This node does not own `spec/ERRATA.md`. Proposed rows, numbered from 35:
 - The I-D has not been rendered by xml2rfc yet; the first CI run may report warnings (for example typographic quotes from kramdown's smart quotes in table cells that had to leave code spans).
 - The NUT drafts use relative links (`00.md`) that resolve only inside cashubtc/nuts.
 - `UseStore` needs a single-ID insert-or-compare for NUT-04 minting (section 1 above); without it the issuer cannot follow notes 8.5.
+- The socket `commit` needs an optional `admit_until` time, checked after the replay lookup, for the notes admission cutoff (notes 5.4, P9); without it a notes gate cannot guarantee timeout refunds under draft-00 as written. ERRATA row 50 would make it unnecessary.
+- Downstream code written against the first version of this draft must drop the `OUTPUT_REUSED` check from `verify` and key the signed-output table by `(B', source)` (notes 6.2, 7.4).
