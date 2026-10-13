@@ -17,7 +17,9 @@ The files follow the conventions of the NUTs repository: the header block (title
    - two NUT numbers;
    - NUT-13 derivation type `0x02` for key-secret proof keys;
    - feedback on the NUT-24 alignment (keeping `X-Cashu` with a NUT-18 or NUT-26 request next to the BNAP offer) and on making NUT-22 tokens key-secret.
-     The design is settled in the issue before any pull request, as this repository's contributing guide asks for its own normative changes.
+
+   The design is settled in the issue before any pull request, as this repository's contributing guide asks for its own normative changes.
+
 2. **Discuss in the open.** Present the proposals in the Cashu developer chat and on a developer call, with running code and the test vectors.
 3. **Then one pull request per NUT**, against cashubtc/nuts, each:
    - renaming `xx-...md` to the assigned number and replacing every "NUT-XX";
