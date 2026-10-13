@@ -32,7 +32,7 @@ Bodies and witnesses are strict: any unknown record, even or odd, any empty reco
 - rail references: none, except kind `ln` with the invoice payment hash when the body holds `fund`;
 - value: `I + F - fee`, fee = `(sum of input_fee_ppk + 999) div 1000`, checked u64 arithmetic (6.3).
 
-Outputs and quote IDs are not use IDs. `verify` has no side effects and runs the checks of 6.2 in order.
+Outputs and quote IDs are not use IDs. `verify` has no side effects and runs the checks of 6.2 in order. It checks that a fund quote is paid, never whether it has issued: the RailId commit is the single-use check, which keeps replays of funded credentials working.
 
 ### Settlement (section 7)
 
@@ -62,7 +62,7 @@ Section 18 lists what the notes vectors must contain. The socket vectors' notes 
 
 ## 2. Decisions made
 
-All 26 provisional decisions are listed in Appendix B of the notes document (P1 to P26). The ones with the widest effect:
+All 27 provisional decisions are listed in Appendix B of the notes document (P1 to P27). The ones with the widest effect:
 
 - P1: one output ladder replaces v0.4's separate change and refund lists, because the charge of a metered call is known only at settlement.
 - P3: unknown records in a notes body are rejected even when odd (draft-00 5.1 canonical bodies).

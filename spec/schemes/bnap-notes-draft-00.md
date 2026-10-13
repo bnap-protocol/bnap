@@ -212,7 +212,7 @@ The scheme runs these checks in this order, cheapest first. The first failure en
 1. **Form.** The body and witness pass 3.5 (`NON_CANONICAL`). The body holds `inputs` or `fund` (`EMPTY`). There are at most `max_inputs` inputs and at most `max_outputs` outputs (`LIMIT`).
 2. **Keysets.** Every input's keyset is listed in the offer's `keysets`, is known to the issuer, is not revoked, and `now` is before its `final_expiry`. Every output's keyset is listed with `active` and is not revoked (`UNKNOWN_KEYSET`). The offer can only narrow what the issuer's live table allows: a keyset revoked after the offer was made is refused.
 3. **Amounts.** Every amount is a power of two for which its keyset has a key (`BAD_AMOUNT`).
-4. **Fund.** If the body holds `fund`, the quote exists, has method `bolt11` and unit `sat`, carries a NUT-20 `pubkey`, is paid in full and has issued nothing (`QUOTE_UNPAID`).
+4. **Fund.** If the body holds `fund`, the quote exists, has method `bolt11` and unit `sat`, carries a NUT-20 `pubkey`, and is paid in full (`QUOTE_UNPAID`). Verification does not ask whether the quote has issued: the RailId commit decides that atomically (8.4, 8.5), so a quote used before gives SPENT at commit, and a replay of the same credential still reaches the socket's replay path (provisional).
 5. **Value and outputs.** The value of 6.3 is defined, and the outputs form a complete ladder that covers it (`BAD_AMOUNT` or `BAD_OUTPUTS`).
 6. **Fresh outputs.** No output's `blinded` point is in the issuer's signed-output table under another source (`OUTPUT_REUSED`). A record whose source is `H(body)` of this very body is this credential's own change: a replay of the credential finds it, and the socket then returns the stored response (draft-00 6.4) (provisional).
 7. **Witness.** The i-th signature of `input_sigs` verifies under the i-th input's `K` over the Digest, and `fund_sig` verifies under the quote's `pubkey` (`BAD_SIGNATURE`).
@@ -423,7 +423,7 @@ Every scheme error is sent with socket code BAD\_CREDENTIAL (10, HTTP 402) and o
 | `bnap:notes/BAD_OUTPUTS` | The outputs are not a complete ladder covering the value | Send the canonical ladder (6.3) |
 | `bnap:notes/OUTPUT_REUSED` | A blinded output was signed before | Derive fresh outputs |
 | `bnap:notes/BAD_SIGNATURE` | A note, an input signature or the fund signature failed | Drop the bad input, or check the wallet's keys |
-| `bnap:notes/QUOTE_UNPAID` | The fund quote is unknown, unpaid, already issued, not BOLT11 in sat, or has no NUT-20 key, or the rail does not confirm its payment | Pay it, wait for the payment, or drop it |
+| `bnap:notes/QUOTE_UNPAID` | The fund quote is unknown, unpaid, not BOLT11 in sat, or has no NUT-20 key, or the rail does not confirm its payment. A quote already issued gives socket SPENT (12) at commit instead | Pay it, wait for the payment, or drop it |
 
 A rail that cannot be reached gives UNAVAILABLE (15), never admission (draft-00 12).
 
@@ -655,6 +655,7 @@ Each of these is marked "(provisional)" where it is made, and each is open to ow
 | P13 | 7.3 | No `scheme_result` when the change is 0 |
 | P14 | 7.4 | Settlement signs a `B'` that was signed meanwhile instead of failing |
 | P26 | 6.2, 7.4 | Signed-output records carry their source (`H(body)` or `rk_mint`), so a replay is not mistaken for a reused output |
+| P27 | 6.2 | Verify does not check whether a fund quote has issued; the RailId commit does, so replays of funded credentials work |
 | P15 | 7.5 | The refund of a timed-out outcome is computed when the client replays the credential |
 | P16 | 8 | A body's `fund` redeems BOLT11 (NUT-23) quotes only; BOLT12 credit is minted through NUT-25 |
 | P17 | 8.1 | The `BNAP-Fund` request field, an RFC 9651 Dictionary, needs registering |
