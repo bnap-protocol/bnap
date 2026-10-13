@@ -1,0 +1,1 @@
+{{#include ../../../spec/DECISIONS.md}}
