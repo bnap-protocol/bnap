@@ -9,7 +9,7 @@ Two proposals for the Cashu specifications ([cashubtc/nuts](https://github.com/c
 
 [`tools/key_secret_vectors.py`](tools/key_secret_vectors.py) regenerates the key-secret test vectors from the BNAP reference encoder (`python3 -I nuts/tools/key_secret_vectors.py reference/python`, from the repository root). It checks `hash_to_curve` against the NUT-00 vectors first.
 
-The files follow the conventions of the NUTs repository: the header block (title, `optional`, `depends on:`, `uses:`, a rule), RFC 2119 key words, and relative links such as `[00]: 00.md` that resolve only inside that repository. "XX" stands for the numbers the maintainers will assign.
+The files follow the conventions of the NUTs repository, checked against upstream NUT-15, 17, 18, 20, 21, 22, 24, 25 and 26: the header block (title, `optional`, then `uses:` before `depends on:`, the order of NUT-24, the one upstream NUT that has both, then a rule); RFC 2119 key words in bold capitals, as NUT-20 and NUT-25 write them (upstream is mixed), with no BCP 14 boilerplate sentence, which no upstream NUT carries; and relative links such as `[00]: 00.md` that resolve only inside that repository. "XX" stands for the numbers the maintainers will assign.
 
 ## Submission plan
 

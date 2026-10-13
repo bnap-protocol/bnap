@@ -90,7 +90,7 @@ How the derivation keeps the normative text: same section order, so draft-00's s
 | `nuts/README.md` | Submission plan: one issue first (NUT numbers, NUT-13 type `0x02`, NUT-24 and NUT-22 feedback), then one pull request per NUT, merged only with two independent implementations |
 | `docs/payment-method-cashu.md` | Registration of `cashu` in the HTTP Payment Methods registry of draft-httpauth-payment-01: the template plus the six items its Section 9.1 requires; BNAP use as `payment:cashu/charge` |
 
-All three markdown files in `nuts/` pass Prettier 3.9.9 (run from the local npx cache, nothing downloaded). `docs/` follows the repository's compact table style instead.
+All three markdown files in `nuts/` pass Prettier 3.9.9 (run from the local npx cache, nothing downloaded). Their header blocks put `uses:` before `depends on:`, as upstream NUT-24 does, write the key words in bold capitals as NUT-20 and NUT-25 do, and carry no BCP 14 sentence, as no upstream NUT does (checked against nine upstream NUTs in repair round 1). `docs/` follows the repository's compact table style instead.
 
 Downstream: the key-secret swap digest (`Cashu_KeySecret_Swap_v1`) and auth digest (`Cashu_KeySecret_Auth_v1`) are new tags only the NUT uses; `bnap:notes` itself uses only the external context (the socket Digest).
 

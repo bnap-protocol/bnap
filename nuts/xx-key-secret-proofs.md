@@ -2,15 +2,13 @@
 
 `optional`
 
-`depends on: NUT-00, NUT-01, NUT-02, NUT-12, NUT-13`
-
 `uses: NUT-03, NUT-05, NUT-06, NUT-07, NUT-09, NUT-22`
+
+`depends on: NUT-00, NUT-01, NUT-02, NUT-12, NUT-13`
 
 ---
 
 This NUT defines key-secret proofs: proofs whose `secret` is the hexadecimal encoding of a public key, and which can only be spent with a signature by that key over a digest that the spending context defines. A copied key-secret proof is useless without the key, so proofs that travel through logs, proxies or HTTP headers cannot be stolen. A mint marks the keysets whose proofs are key-secret proofs, and accepts their inputs only with a valid witness.
-
-The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in [RFC 2119][RFC2119] and [RFC 8174][RFC8174] when, and only when, they appear in all capitals.
 
 ## Key-secret proofs
 
@@ -35,16 +33,16 @@ Everything else is unchanged: the wallet blinds `Y` into `B_`, the mint signs it
 }
 ```
 
-A key-secret proof is spent by presenting it together with a **witness**: one [BIP-340][BIP340] Schnorr signature by `k` over a 32-byte digest `D`. The spending context defines `D` (see [Contexts](#contexts)). `D` MUST commit to everything the spend depends on, at least the operation, its outputs and, where the proof pays for something, that thing.
+A key-secret proof is spent by presenting it together with a **witness**: one [BIP-340][BIP340] Schnorr signature by `k` over a 32-byte digest `D`. The spending context defines `D` (see [Contexts](#contexts)). `D` **MUST** commit to everything the spend depends on, at least the operation, its outputs and, where the proof pays for something, that thing.
 
-To a mint that does not know the keyset is a key-secret keyset, the secret looks like an ordinary random secret. That is on purpose, since key-secret proofs are indistinguishable from other proofs at rest. It is also why [key isolation](#key-isolation) is a MUST.
+To a mint that does not know the keyset is a key-secret keyset, the secret looks like an ordinary random secret. That is on purpose, since key-secret proofs are indistinguishable from other proofs at rest. It is also why [key isolation](#key-isolation) is a **MUST**.
 
 ## Key-secret keysets
 
 A keyset is either a key-secret keyset or not; every proof of a key-secret keyset is a key-secret proof.
 
-- A key-secret keyset MUST use a version `01` keyset ID ([NUT-02][02]).
-- A key-secret keyset SHOULD set `final_expiry` ([NUT-02][02]), so that the mint can bound how long it keeps spent `Y` values.
+- A key-secret keyset **MUST** use a version `01` keyset ID ([NUT-02][02]).
+- A key-secret keyset **SHOULD** set `final_expiry` ([NUT-02][02]), so that the mint can bound how long it keeps spent `Y` values.
 - The mint advertises its key-secret keysets in its [NUT-06][06] info:
 
 ```json
@@ -59,9 +57,9 @@ A keyset is either a key-secret keyset or not; every proof of a key-secret keyse
 
 ### Key isolation
 
-- The mint MUST refuse every input from a key-secret keyset that comes without a valid witness, in every operation it offers ([NUT-03][03], [NUT-05][05] and any other), and in every context it does not list in `contexts`.
-- A key-secret keyset's keys MUST NOT appear in any other keyset.
-- A wallet MUST NOT present a key-secret proof without its witness, and MUST NOT send it to any mint other than the one that issued it.
+- The mint **MUST** refuse every input from a key-secret keyset that comes without a valid witness, in every operation it offers ([NUT-03][03], [NUT-05][05] and any other), and in every context it does not list in `contexts`.
+- A key-secret keyset's keys **MUST NOT** appear in any other keyset.
+- A wallet **MUST NOT** present a key-secret proof without its witness, and **MUST NOT** send it to any mint other than the one that issued it.
 
 ## Witness
 
@@ -73,9 +71,9 @@ The witness is one 64-byte BIP-340 signature by `k` over `D`. In the built-in co
 }
 ```
 
-An external context MAY carry the signature in its own encoding.
+An external context **MAY** carry the signature in its own encoding.
 
-A verifier MUST check, for every key-secret input:
+A verifier **MUST** check, for every key-secret input:
 
 1. `secret` is exactly 64 lowercase hex characters and decodes to a valid x-only public key `K` (a field element below the field size for which a curve point exists).
 2. The witness holds exactly one signature, and it verifies under `K` over `D`.
@@ -97,7 +95,7 @@ outputs = u16(number of outputs) || for each output: u64(amount) || keyset ID (3
 D       = tagged_hash("Cashu_KeySecret_Swap_v1", inputs || outputs)
 ```
 
-Every output MUST be on a version `01` keyset. One `D` covers the whole swap, and each key-secret input carries its own signature over it.
+Every output **MUST** be on a version `01` keyset. One `D` covers the whole swap, and each key-secret input carries its own signature over it.
 
 ### melt
 
@@ -112,7 +110,7 @@ D       = tagged_hash("Cashu_KeySecret_Melt_v1", quote || inputs || outputs)
 
 ### External contexts
 
-Another specification MAY spend key-secret proofs outside NUT-03 and NUT-05, for example to pay for an HTTP request. It then defines `D` and MUST make sure that:
+Another specification **MAY** spend key-secret proofs outside NUT-03 and NUT-05, for example to pay for an HTTP request. It then defines `D` and **MUST** make sure that:
 
 - `D` is 32 bytes and is computed by the verifier itself, never taken from the sender;
 - `D` commits to everything the spend depends on: the action paid for, the amount, and any outputs the verifier will sign in return;
@@ -122,7 +120,7 @@ The BNAP socket is one such context: its `Digest`, `H_"bnap/cred"(...)`, covers 
 
 ### Blind authentication tokens
 
-Key-secret proofs make [NUT-22][22] blind authentication tokens theft-resistant. A mint MAY issue its blind auth keyset as a key-secret keyset and advertise it in `keysets`. A wallet then derives each blind auth token as a key-secret proof and, with every protected request, signs
+Key-secret proofs make [NUT-22][22] blind authentication tokens theft-resistant. A mint **MAY** issue its blind auth keyset as a key-secret keyset and advertise it in `keysets`. A wallet then derives each blind auth token as a key-secret proof and, with every protected request, signs
 
 ```
 D = tagged_hash("Cashu_KeySecret_Auth_v1", u16(len(method)) || method || u16(len(path)) || path || SHA256(request body))
@@ -141,17 +139,17 @@ r = HMAC_SHA256(seed, "Cashu_KDF_HMAC_SHA256" || keyset_id || u64(counter) || 0x
 
 `r` is the NUT-13 blinding factor; the NUT-13 secret type `0x00` is not used, because the secret is `hex(K)`. If `k` or `r` is 0, the wallet skips the counter value. This NUT requests derivation type `0x02` for this use.
 
-Restore ([NUT-09][09]) and state checks ([NUT-07][07]) work unchanged: the wallet regenerates `B_` from `k` and `r`, and checks `Y`. A wallet MUST NOT reuse a counter value once its `B_` has been sent, signed or not, because the same `B_` in two requests links them.
+Restore ([NUT-09][09]) and state checks ([NUT-07][07]) work unchanged: the wallet regenerates `B_` from `k` and `r`, and checks `Y`. A wallet **MUST NOT** reuse a counter value once its `B_` has been sent, signed or not, because the same `B_` in two requests links them.
 
 ## DLEQ proofs
 
-A mint that signs outputs for key-secret keysets SHOULD use the deterministic nonce of [NUT-12][12], so that it can recompute a response it has already sent. Specifications that require recomputed responses, such as the BNAP socket, make it a MUST. Wallets MUST NOT reveal `r` or a proof's DLEQ proof to the mint, because either links a spend to its issuance.
+A mint that signs outputs for key-secret keysets **SHOULD** use the deterministic nonce of [NUT-12][12], so that it can recompute a response it has already sent. Specifications that require recomputed responses, such as the BNAP socket, make it a **MUST**. Wallets **MUST NOT** reveal `r` or a proof's DLEQ proof to the mint, because either links a spend to its issuance.
 
 ## Wallet rules
 
 - A wallet uses each key once, for one proof, at one mint.
 - A key-secret proof is not transferable offline: the holder can hand over `k` together with the proof, which makes the recipient trust the sender, or spend it into an output the recipient chose.
-- Wallets MAY store key-secret proofs in V4 tokens ([NUT-00][00]) for backup. A token holding them is not a payment: without `k` nobody can spend it.
+- Wallets **MAY** store key-secret proofs in V4 tokens ([NUT-00][00]) for backup. A token holding them is not a payment: without `k` nobody can spend it.
 
 ## Security considerations
 
@@ -210,5 +208,3 @@ The signatures are split over two lines here only for width; each is 64 bytes.
 [22]: 22.md
 [xx-402]: xx-http-402-self-issued-mint.md
 [BIP340]: https://github.com/bitcoin/bips/blob/master/bip-0340.mediawiki
-[RFC2119]: https://www.rfc-editor.org/rfc/rfc2119
-[RFC8174]: https://www.rfc-editor.org/rfc/rfc8174
