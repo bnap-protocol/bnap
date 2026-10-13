@@ -1,0 +1,20 @@
+BNAP specification text license
+
+Copyright (c) 2026 BNAP contributors
+
+The specification text in this repository (the prose of the protocol
+documents, including the files under spec/ and any other normative or
+informative documentation describing the protocol) is licensed under the
+Creative Commons Attribution 4.0 International License (CC-BY-4.0).
+
+SPDX-License-Identifier: CC-BY-4.0
+
+The full legal code is available at:
+https://creativecommons.org/licenses/by/4.0/legalcode
+
+A human-readable summary is available at:
+https://creativecommons.org/licenses/by/4.0/
+
+Code in this repository (scripts, tooling, reference code and test vector
+generators) is dual-licensed under the MIT license (LICENSE-MIT) or the
+Apache License, Version 2.0 (LICENSE-APACHE), at your option.
