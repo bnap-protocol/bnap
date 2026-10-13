@@ -81,7 +81,7 @@ mdbook build book    # needs mdBook 0.5
 | --- | --- |
 | Leak guard | `ops/leak-guard.sh` over the tracked files and every new commit; on pull requests, a `Signed-off-by` line on every non-merge commit |
 | Test vectors | `reference/python/bnap_ref.py` regenerates `vectors/vectors.json`, compared after JSON normalisation and then byte for byte, on an older and the newest Python 3 |
-| Registry | `registry/validate.py`, once it exists (with `registry/requirements.txt` installed first, if present) |
+| Registry | `python3 -I registry/validate.py --check` and `python3 -I registry/test_validate.py`, once they exist (Python 3.11 or later) |
 | Book | Every spec file has its include page and SUMMARY entry, `mdbook build book` succeeds, and the built book has no broken relative links |
 
 Every push to `main` also publishes the book to GitHub Pages
