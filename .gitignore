@@ -1,0 +1,25 @@
+# Editors and OS files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Build output of spec and vector tooling
+/build/
+/out/
+/target/
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+
+# Logs and scratch
+*.log
+*.tmp
