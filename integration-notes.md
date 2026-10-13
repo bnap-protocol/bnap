@@ -60,7 +60,7 @@ NUT-13 derivation for version-01 keysets with type `0x02` for the note key and `
 
 ### Test vectors
 
-Section 18 lists what the notes vectors must contain. The socket vectors' notes body is a placeholder and is not a valid notes body under this draft; they need no change, because they test socket hashing only.
+Section 18 lists what the notes vectors must contain. The socket vectors cannot serve as notes vectors: their route offer's `bnap:notes` pay entry has no `params` record (no `issuer`, no `keysets`, which notes 5.1 requires), so every input fails 6.2 step 2 with `UNKNOWN_KEYSET`, and its `expires`, 300 s after the reference time 1791700000, leaves no admission window under notes 5.4. The notes vectors therefore use their own **notes route offer** (notes 18.1): the socket route offer under the same offer key, MAC key, nonce, attest entry and GREASE record, with `expires` 1791703600 and a `params` record (issuer `https://api.example/cashu`, keyset A active with `input_fee_ppk` 100 and `final_expiry` 1830000000, keyset B inputs-only with fee 0 and `final_expiry` 1800000000; keys `a` = SHA-256("bnap notes test keyset L m") for m = 1 to 2^15; NUT-02 version-01 IDs). It is 413 bytes, OfferID `666b28f7f1d68d92e9c180f0d11fe743730d3932ab5bc566d68f53b17b0cbd95`; `nuts/tools/notes_offer_vector.py` regenerates it and checks that the same records without `params` and with the socket `expires` reproduce the socket OfferID `5c8640…`. Notes vector items 2, 3, 4 and 6 are built on it. `vectors/vectors.json` itself needs no change: its placeholder notes body tests socket hashing only.
 
 ## 2. ietf/: draft-bnap-socket
 
@@ -86,7 +86,8 @@ How the derivation keeps the normative text: same section order, so draft-00's s
 | --- | --- |
 | `nuts/xx-key-secret-proofs.md` | NUT-XX key-secret proofs: secret = hex(K), witness = one BIP-340 signature by K over a context digest; key-secret keysets and key isolation; `swap`, `melt` and external contexts; theft-resistant NUT-22 tokens; NUT-13 type `0x02`; test vectors |
 | `nuts/tools/key_secret_vectors.py` | Regenerates those vectors (`python3 -I nuts/tools/key_secret_vectors.py reference/python`); checks `hash_to_curve` against the three NUT-00 vectors first, and they match |
-| `nuts/xx-http-402-self-issued-mint.md` | NUT-XX HTTP 402 with a self-issued mint: a NUT-24 profile; `X-Cashu` keeps a NUT-18/NUT-26 request (own mint only, `i` = OfferID hex) next to the BNAP offer; payment in `BNAP-Credential`; change and receipt in `BNAP-Receipt`; funding in the 402; alignment table |
+| `nuts/tools/notes_offer_vector.py` | Regenerates the notes route offer of notes 18.1, whose OfferID the `X-Cashu` example of the HTTP 402 NUT carries (`python3 -I nuts/tools/notes_offer_vector.py reference/python`); checks its base records against the socket OfferID and its NUT-02 version-01 keyset ID code against the cashu 0.18.1 test ID `015ba18a…` first |
+| `nuts/xx-http-402-self-issued-mint.md` | NUT-XX HTTP 402 with a self-issued mint: a NUT-24 profile; `X-Cashu` keeps a NUT-18/NUT-26 request (own mint only, `i` = OfferID hex; the example uses the notes route offer of notes 18.1) next to the BNAP offer; payment in `BNAP-Credential`; change and receipt in `BNAP-Receipt`; funding in the 402; alignment table |
 | `nuts/README.md` | Submission plan: one issue first (NUT numbers, NUT-13 type `0x02`, NUT-24 and NUT-22 feedback), then one pull request per NUT, merged only with two independent implementations |
 | `docs/payment-method-cashu.md` | Registration of `cashu` in the HTTP Payment Methods registry of draft-httpauth-payment-01: the template plus the six items its Section 9.1 requires; BNAP use as `payment:cashu/charge` |
 

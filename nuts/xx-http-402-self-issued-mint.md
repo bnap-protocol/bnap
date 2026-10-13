@@ -37,11 +37,11 @@ A server answers a request that needs payment with status 402 and these fields:
 2. `WWW-Authenticate: BNAP offer="..."`: the BNAP offer ([socket][socket], section 4). It is signed by the server's offer key and lists `bnap:notes` with the issuer URL, the keysets it accepts, their input fees and which of them sign change ([notes][notes], section 5).
 3. Any other challenges the server offers, such as L402 or the `Payment` scheme.
 
-For the `chat` route of the BNAP examples, the decoded `X-Cashu` request is
+For the notes route offer of the `bnap:notes` test vectors ([notes][notes], section 18.1), which prices the `chat` route of the BNAP examples and lists the issuer `https://api.example/cashu` with two keysets, the decoded `X-Cashu` request is
 
 ```json
 {
-  "i": "5c8640261f6f1de3206a2e9cd1c2599a2e9256547242061c95f9d2e06cf6696d",
+  "i": "666b28f7f1d68d92e9c180f0d11fe743730d3932ab5bc566d68f53b17b0cbd95",
   "a": 2100,
   "u": "sat",
   "s": true,
