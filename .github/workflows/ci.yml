@@ -1,0 +1,143 @@
+# Continuous integration for the BNAP specification repository.
+
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  leak-guard:
+    name: Leak guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      # Pre-push mode scans the tracked files and then every commit this run
+      # adds (added lines, file names, author, committer and message), the
+      # same way the local pre-push hook does.
+      - name: Scan tracked files and new commits
+        shell: sh
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          SHA: ${{ github.sha }}
+        run: |
+          zero=0000000000000000000000000000000000000000
+          if [ "$EVENT" = pull_request ]; then
+            base=$PR_BASE
+            head=$PR_HEAD
+          else
+            base=${PUSH_BEFORE:-$zero}
+            head=$SHA
+          fi
+          printf 'refs/heads/ci %s refs/heads/ci %s\n' "$head" "$base" |
+            sh ops/leak-guard.sh --pre-push origin
+      - name: DCO sign-off on every non-merge commit
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.user.login != 'dependabot[bot]'
+        shell: sh
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          missing=0
+          for c in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            if ! git log -1 --format=%B "$c" | grep -q '^Signed-off-by: '; then
+              echo "::error::commit $(git rev-parse --short "$c") has no Signed-off-by line (use git commit -s)"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+  vectors:
+    name: Test vectors (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # An older release and the newest one: the reference must produce
+        # the same bytes on every Python 3.
+        python: ["3.11", "3.x"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Regenerate vectors/vectors.json from the reference
+        run: python3 -I reference/python/bnap_ref.py > "$RUNNER_TEMP/vectors.json"
+      # Content first, so that a real difference in a vector is reported as
+      # such and not as a formatting change.
+      - name: Compare after JSON normalisation
+        run: |
+          python3 -I -m json.tool --sort-keys vectors/vectors.json > "$RUNNER_TEMP/committed.norm.json"
+          python3 -I -m json.tool --sort-keys "$RUNNER_TEMP/vectors.json" > "$RUNNER_TEMP/generated.norm.json"
+          if ! diff -u "$RUNNER_TEMP/committed.norm.json" "$RUNNER_TEMP/generated.norm.json"; then
+            echo "::error file=vectors/vectors.json::the reference generates different vectors than the committed file"
+            exit 1
+          fi
+      - name: Compare raw bytes
+        run: |
+          if ! diff -u vectors/vectors.json "$RUNNER_TEMP/vectors.json"; then
+            echo "::error file=vectors/vectors.json::same content but different bytes; regenerate with: python3 -I reference/python/bnap_ref.py > vectors/vectors.json"
+            exit 1
+          fi
+
+  registry:
+    name: Registry
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.x"
+      - name: Skip when there is no registry validator yet
+        if: hashFiles('registry/validate.py') == ''
+        run: echo "registry/validate.py does not exist yet; registry validation skipped."
+      - name: Install validator requirements
+        if: hashFiles('registry/requirements.txt') != ''
+        run: python3 -m pip install --disable-pip-version-check -r registry/requirements.txt
+      - name: Validate registry entries
+        if: hashFiles('registry/validate.py') != ''
+        run: python3 registry/validate.py
+
+  book:
+    name: Book
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      # Every Markdown file under spec/ must have a page in book/src/spec/
+      # (a one-line include of the spec file) and an entry in SUMMARY.md.
+      - name: Every spec file is in the book
+        shell: sh
+        run: |
+          missing=0
+          for f in $(git ls-files 'spec/*.md'); do
+            page="book/src/$f"
+            if [ ! -f "$page" ]; then
+              echo "::error file=$f::no book page $page for this spec file"
+              missing=1
+            elif ! grep -q "(${f})" book/src/SUMMARY.md; then
+              echo "::error file=book/src/SUMMARY.md::$f is not listed in SUMMARY.md"
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: mdbook@0.5
+      - run: mdbook build book
