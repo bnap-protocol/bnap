@@ -120,8 +120,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      # Every Markdown file under spec/ must have a page in book/src/spec/
-      # (a one-line include of the spec file) and an entry in SUMMARY.md.
+      # Every Markdown file under spec/ must have a page at the same path
+      # under book/src/ that only includes the spec file, and an entry in
+      # SUMMARY.md. The spec text itself is never copied into book/.
       - name: Every spec file is in the book
         shell: sh
         run: |
@@ -130,6 +131,9 @@ jobs:
             page="book/src/$f"
             if [ ! -f "$page" ]; then
               echo "::error file=$f::no book page $page for this spec file"
+              missing=1
+            elif ! grep -q "^{{#include [./]*${f}}}\$" "$page" || [ "$(wc -l < "$page")" -ne 1 ]; then
+              echo "::error file=$page::must be the single line {{#include <relative path to $f>}}"
               missing=1
             elif ! grep -q "(${f})" book/src/SUMMARY.md; then
               echo "::error file=book/src/SUMMARY.md::$f is not listed in SUMMARY.md"
