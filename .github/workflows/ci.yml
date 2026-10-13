@@ -102,18 +102,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+      # validate.py needs Python 3.11 or later (tomllib) and nothing else.
       - uses: actions/setup-python@v7
         with:
           python-version: "3.x"
       - name: Skip when there is no registry validator yet
         if: hashFiles('registry/validate.py') == ''
         run: echo "registry/validate.py does not exist yet; registry validation skipped."
-      - name: Install validator requirements
-        if: hashFiles('registry/requirements.txt') != ''
-        run: python3 -m pip install --disable-pip-version-check -r registry/requirements.txt
-      - name: Validate registry entries
+      # --check validates every registry file and fails if
+      # registry/generated/registry.json is missing or stale.
+      - name: Validate the registry and its generated export
         if: hashFiles('registry/validate.py') != ''
-        run: python3 registry/validate.py
+        run: python3 -I registry/validate.py --check
+      - name: Run the validator tests
+        if: hashFiles('registry/test_validate.py') != ''
+        run: python3 -I registry/test_validate.py
 
   book:
     name: Book
