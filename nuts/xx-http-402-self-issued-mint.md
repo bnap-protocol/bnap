@@ -112,7 +112,7 @@ The issuer:
 - issues only key-secret keysets ([key-secret proofs][xx-keys]) with unit `sat`, version `01` keyset IDs and a `final_expiry`;
 - serves [NUT-01][01], [NUT-02][02], [NUT-04][04] with [NUT-20][20] required, [NUT-06][06], [NUT-07][07], [NUT-09][09], [NUT-12][12] and [NUT-23][23];
 - refuses [NUT-03][03] swaps and [NUT-05][05] melts of its keysets' proofs, unless it implements a withdrawal extension that requires witnesses;
-- answers [NUT-07][07] from the server's record of committed `Y` values, and [NUT-09][09] from its record of signed outputs, which it keeps until the keyset's final expiry;
+- answers [NUT-07][07] from the server's record of committed `Y` values, and [NUT-09][09] from its record of signed outputs. It keeps both records until 60 seconds after the keyset's final expiry, because the socket allows 60 seconds of clock skew on every expiry check and a proof still verifies until then ([notes][notes], section 10);
 - publishes a keyset at least 30 days before it signs with it, and always keeps a standby keyset published, so that a compromised keyset can be replaced at once.
 
 Wallets **SHOULD** swap proofs out of a keyset that nears its final expiry, through a request on the server's swap route priced at 0 ([notes][notes], section 11).
