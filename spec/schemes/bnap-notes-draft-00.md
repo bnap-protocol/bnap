@@ -360,9 +360,9 @@ mint(quote, outputs):
   confirm through the rail that the quote's invoice is paid      otherwise the NUT-04 "not paid" error
   sigs = blind signatures and DLEQ proofs for outputs            deterministic, as in 7.4
   in one serializable transaction:
-      if used[RailId] = rk_mint:      return sigs                 a retry of the same mint request
-      if used[RailId] exists:         abort                       NUT-04 error for an issued quote
-      if any output's B' has a record: abort                      NUT-04 error for an output signed before
+      if used[RailId] = rk_mint:        return sigs               a retry of the same mint request
+      if used[RailId] exists:           abort                     NUT-04 error for an issued quote
+      if any output's B' has a record:  abort                     NUT-04 error for an output signed before
       used[RailId] = rk_mint; record sigs with source rk_mint
   return sigs
 ```
