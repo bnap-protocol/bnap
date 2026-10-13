@@ -40,7 +40,7 @@ Outputs and quote IDs are not use IDs. `verify` has no side effects and runs the
 - The outputs must form a complete power-of-two ladder covering the value (6.3, checked at verify as `BAD_OUTPUTS`).
 - `select(outputs, change)`: greedy by amount descending, then index ascending. Proven exact on complete ladders (brute force over 942 ladders, 55,542 targets, zero failures).
 - DLEQ with NUT-12's deterministic nonce is a MUST, so settle is byte-deterministic.
-- The signed-output table (NUT-09) must be durable no later than the outcome write. A `B'` signed meanwhile is signed again, never a settle failure.
+- The signed-output table (NUT-09) must be durable no later than the outcome write. Each record carries a 32-byte source: `H(pay body)` of the credential that settled it, or `rk_mint`. Verify's `OUTPUT_REUSED` check skips records whose source equals `H(this body)`, so a replay of the same credential still reaches the socket's replay path. A `B'` signed meanwhile is signed again, never a settle failure.
 - Timeout refunds are computed lazily when the client replays the credential (7.5). The gate must support "outcome FAILED, no scheme_result yet" and fill it with one conditional write.
 
 ### Issuer and store requirements that cross crate boundaries
@@ -62,7 +62,7 @@ Section 18 lists what the notes vectors must contain. The socket vectors' notes 
 
 ## 2. Decisions made
 
-All 25 provisional decisions are listed in Appendix B of the notes document (P1 to P25). The ones with the widest effect:
+All 26 provisional decisions are listed in Appendix B of the notes document (P1 to P26). The ones with the widest effect:
 
 - P1: one output ladder replaces v0.4's separate change and refund lists, because the charge of a metered call is known only at settlement.
 - P3: unknown records in a notes body are rejected even when odd (draft-00 5.1 canonical bodies).

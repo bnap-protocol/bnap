@@ -214,7 +214,7 @@ The scheme runs these checks in this order, cheapest first. The first failure en
 3. **Amounts.** Every amount is a power of two for which its keyset has a key (`BAD_AMOUNT`).
 4. **Fund.** If the body holds `fund`, the quote exists, has method `bolt11` and unit `sat`, carries a NUT-20 `pubkey`, is paid in full and has issued nothing (`QUOTE_UNPAID`).
 5. **Value and outputs.** The value of 6.3 is defined, and the outputs form a complete ladder that covers it (`BAD_AMOUNT` or `BAD_OUTPUTS`).
-6. **Fresh outputs.** No output's `blinded` point is in the issuer's signed-output table (`OUTPUT_REUSED`).
+6. **Fresh outputs.** No output's `blinded` point is in the issuer's signed-output table under another source (`OUTPUT_REUSED`). A record whose source is `H(body)` of this very body is this credential's own change: a replay of the credential finds it, and the socket then returns the stored response (draft-00 6.4) (provisional).
 7. **Witness.** The i-th signature of `input_sigs` verifies under the i-th input's `K` over the Digest, and `fund_sig` verifies under the quote's `pubkey` (`BAD_SIGNATURE`).
 8. **Notes.** For every input, `C = a·hash_to_curve(hex(K))` for the key `a` of its keyset and amount, checked by the signer (`BAD_SIGNATURE`).
 
@@ -292,7 +292,7 @@ The client knows `value` from its own body and the offer, and `charged` from the
 
 Draft-00 6.4 requires `settle` to be deterministic. A blind signature `a·B'` already is. The issuer MUST make every DLEQ proof with NUT-12's deterministic nonce, which NUT-12 itself only recommends; with it, the same verified credential, outcome and charge always give byte-identical `scheme_result`.
 
-The issuer records every signed output, with its keyset, amount, `C'` and DLEQ proof, in a signed-output table that it keeps until the output keyset's final expiry, as NUT-09 requires. These records MUST be durable no later than the outcome write of draft-00 6.4, and therefore before the Response is sent. If a `B'` was signed meanwhile under another credential or mint request, `settle` still signs it and does not fail, and the table keeps the first record (provisional). The two signatures share one `Y`, so at most one of them can ever be spent: the client that reused the output loses value, and the operator loses nothing.
+The issuer records every signed output, with its keyset, amount, `C'`, DLEQ proof and source, in a signed-output table that it keeps until the output keyset's final expiry, as NUT-09 requires. The source is 32 bytes: `H(body)` of the credential body whose settlement signed the output, or `rk_mint` for a NUT-04 mint (8.5). It lets verification tell a replay's own change from a reused output (6.2, step 6) (provisional). These records MUST be durable no later than the outcome write of draft-00 6.4, and therefore before the Response is sent. If a `B'` was signed meanwhile under another credential or mint request, `settle` still signs it and does not fail, and the table keeps the first record (provisional). The two signatures share one `Y`, so at most one of them can ever be spent: the client that reused the output loses value, and the operator loses nothing.
 
 ### 7.5 Replays and timeouts
 
@@ -348,7 +348,7 @@ mint(quote, outputs):
   confirm through the rail that the quote's invoice is paid      otherwise the NUT-04 "not paid" error
   sigs = blind signatures and DLEQ proofs for outputs            deterministic, as in 7.4
   in one serializable transaction:
-      if used[RailId] is absent:  used[RailId] = rk_mint; record sigs in the signed-output table
+      if used[RailId] is absent:  used[RailId] = rk_mint; record sigs with source rk_mint
       elif used[RailId] = rk_mint: sigs = the stored records    a retry of the same mint request
       else:                        abort                         NUT-04 error for an issued quote
   return sigs
@@ -654,6 +654,7 @@ Each of these is marked "(provisional)" where it is made, and each is open to ow
 | P12 | 7.1 | A FAILED outcome has `charged` 0 and refunds the whole value |
 | P13 | 7.3 | No `scheme_result` when the change is 0 |
 | P14 | 7.4 | Settlement signs a `B'` that was signed meanwhile instead of failing |
+| P26 | 6.2, 7.4 | Signed-output records carry their source (`H(body)` or `rk_mint`), so a replay is not mistaken for a reused output |
 | P15 | 7.5 | The refund of a timed-out outcome is computed when the client replays the credential |
 | P16 | 8 | A body's `fund` redeems BOLT11 (NUT-23) quotes only; BOLT12 credit is minted through NUT-25 |
 | P17 | 8.1 | The `BNAP-Fund` request field, an RFC 9651 Dictionary, needs registering |
