@@ -184,8 +184,13 @@
       "allOf": [
         {
           "if": { "required": ["kind"], "properties": { "kind": { "const": "credential" } } },
-          "then": { "properties": { "role": { "enum": ["value", "both"] }, "quota_id": { "const": "" } } },
+          "then": { "properties": { "role": { "enum": ["value", "both"] } } },
           "else": { "properties": { "role": { "enum": ["attestation", "both"] } } }
+        },
+        {
+          "$comment": "draft-00 11: quota_id is for attestations only; a pure value scheme leaves it empty.",
+          "if": { "required": ["role"], "properties": { "role": { "const": "value" } } },
+          "then": { "properties": { "quota_id": { "const": "" } } }
         },
         {
           "if": { "required": ["status"], "properties": { "status": { "const": "does-not-fit" } } },

@@ -115,7 +115,7 @@ Every entry has `name`, `kind`, `status`, `source` (where in the spec the system
 | `properties` | The other properties that apply to the entry's kind |
 | `upto` | Credentials: whether the scheme can settle a lower amount than it authorized |
 | `local_id` | What the scheme's `verify` returns as local IDs |
-| `quota_id` | Attestations: the stable identity a quota counts against, or empty if the scheme cannot carry a quota. Empty for credentials |
+| `quota_id` | Attestations: the stable identity a quota counts against, or empty if the scheme cannot carry a quota. Always empty for `role = "value"` |
 | `rail_refs` | Credentials: the rail references the scheme returns |
 | `rail_kinds` | Credentials: the rail kinds it may be configured with |
 | `verifiers` | The verifier IDs it may be configured with |
