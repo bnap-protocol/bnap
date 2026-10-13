@@ -198,6 +198,12 @@ These are the NUT-23 quote fields a client needs, so it can pay from the 402 wit
 - A gate MUST NOT put a `fund_quote` in an offer for a route whose `require` sets `link-payment` to `unlinkable`, because a credential that redeems it is linkable to the payment (section 14) (provisional).
 - A gate MAY cache an exact-scope offer that carries a `fund_quote` as it caches offers with natives, so that the client can send `offer_id`; when it does not, the client sends the offer inline (provisional; draft-00 5.1 names only offers with natives).
 - The notes pay entry carries no native record: `bnap:notes` defines no native artifact.
+- **Replay horizon.** Draft-00 4.4 checks expiry before the commit looks for a replay (draft-00 6.3, 6.4), so a replay sent after the offer has expired is STALE even when its outcome exists. Without a limit on late admissions, a credential committed shortly before expiry could never collect its timeout refund (7.5) or a missed change. The **deadline** of a notes entry is the earlier of the offer's `expires` and the entry's `quote_expires`; its **admission cutoff** is that deadline minus `pending_timeout` minus 60 seconds. A gate that lists `bnap:notes` (provisional):
+  - MUST NOT commit a new notes credential after the cutoff. It applies the cutoff inside the commit transaction, after the replay lookup of draft-00 6.3: a credential whose outcome exists is still served as a replay, and a new one gets STALE and consumes nothing;
+  - MUST NOT list `bnap:notes` in an offer whose cutoff is less than 60 seconds after the offer is issued, and SHOULD leave several minutes. With the default `pending_timeout` of 300 seconds, an exact-scope offer that lists `bnap:notes` therefore lives at least 7 minutes, and SHOULD live 10 minutes or more, which is still the "minutes" of draft-00 12;
+  - SHOULD issue the next route-scope offer before the current one reaches its cutoff, so that clients always hold an offer that admits.
+
+  Every committed notes credential then reaches its `pending_timeout` at least 60 seconds before its deadline, and a client that replays as 7.5 says collects its refund. A socket-level cure, a gate that serves the replay of an authentic but expired offer instead of answering STALE, is proposed as a draft-00 erratum; with it, the cutoff could go.
 
 ## 6. Verification
 
@@ -301,6 +307,8 @@ If a `B'` was signed before, under another credential or mint request, `settle` 
 
 Replays are the socket's (draft-00 6.4): a replay returns the stored `scheme_result`, and the scheme MUST NOT sign anything beyond it. When an outcome is still PENDING after `pending_timeout`, the socket moves it to FAILED with charge 0. The refund needs the client's outputs, which the outcome record does not keep, so it is computed when the client replays the credential: the gate finds the FAILED outcome without a `scheme_result`, calls `settle` for FAILED with charge 0, stores the result once with a conditional write, and returns it (provisional reading of draft-00 6.4, which relies on `settle` being deterministic but does not say when the timeout refund is computed). A client whose request timed out therefore replays it to collect its refund.
 
+**When to replay.** A client whose request has no final answer, or whose response or receipt went missing, replays the credential at once, again at each `retry_after` of a PENDING answer, and in any case as soon as `pending_timeout` has passed since it sent the credential. The admission cutoff of 5.4 leaves at least 60 seconds between that timeout and the offer's deadline for this replay (provisional). After the deadline, draft-00 as written answers even a replay with STALE (5.4), so a refund, change or receipt not collected by then is lost to the client.
+
 ## 8. Funding inside the 402
 
 Buying credit is Cashu's Lightning mint flow, used verbatim: a NUT-23 BOLT11 quote locked to a client key (NUT-20), paid, then minted with NUT-04. BOLT11 is mandatory, because the issuer is always online and every payer stack accepts it. BOLT12 through NUT-25 is optional and is minted through NUT-25 only; a body's `fund` redeems BOLT11 quotes only (provisional). This section adds one shortcut: a first-time client can get the quote inside the 402 and redeem it inside the paid request, so it funds and acts in one round trip.
@@ -323,6 +331,7 @@ A gate that receives `BNAP-Fund` on a route whose notes pay entry carries `max_f
 - otherwise creates a NUT-23 BOLT11 quote for `min(amount, max_fund)` sat, locked to `pubkey` (NUT-20), with a quote ID of at most 64 bytes, and puts it in the `fund_quote` of an exact-scope offer for this request (5.3, 5.4). It MAY also send its route-scope offer, without the quote, in the same 402;
 - MUST create at most one quote per offer nonce and MUST rate-limit quote creation per client address (provisional, following DECISIONS row 24 for native challenges), and SHOULD bound the open, unpaid quotes per address;
 - MUST NOT create a quote for a request without `BNAP-Fund`. A scraper gets an offer, never an invoice;
+- SHOULD set the quote's `expiry` no later than the admission cutoff of the offer that carries it (5.4), so that a client that pays in time can still use that offer (provisional). A quote paid later is not lost: it is redeemed with any other notes offer, or minted (8.4, 8.5);
 - MAY decline amounts below a minimum top-up of its choosing, in which case it sends no quote. v0.4 suggested `max(4 × price, 21)` sat, because the operator's inbound liquidity, not routing, is the real cost of a small payment.
 
 ### 8.3 Paying the quote
@@ -512,7 +521,8 @@ A notes wallet MUST:
 - send outputs that form a complete ladder covering the value (6.3);
 - check the selected outputs and every DLEQ proof before accepting change (7.3);
 - record its counters in its backup as 12.2 requires;
-- keep every Response it paid for (draft-00 8.1).
+- keep every Response it paid for (draft-00 8.1);
+- replay a credential that has no final answer, or whose receipt went missing, at once, at each `retry_after` and as soon as `pending_timeout` has passed, and in any case before its offer's deadline (7.5).
 
 A notes wallet SHOULD send the canonical ladder (6.3), send `offer_id` instead of the offer where it can (draft-00 5.1), and swap notes before their keyset's final expiry (section 10). It SHOULD include a `binding` whenever it can read its connection's `tls-exporter` value. A BINDING error means the gate cannot check the binding or the connection is intercepted; the wallet MAY retry without a binding only if it accepts that the response is then only as confidential as the credential (draft-00 6.4) (provisional; draft-00 does not say how a client learns whether a gate can check a binding).
 
@@ -543,6 +553,7 @@ The socket's considerations (draft-00 section 12) apply. These are the scheme's 
 | Lost device | Seed recovery through NUT-13, NUT-09 and NUT-07 (section 12) |
 | Invoice minting as denial of service | Funding only on `BNAP-Fund`, capped, one quote per offer nonce, rate-limited per address (8.2) |
 | Change withheld or miscounted | The deterministic selection (7.2), checked by the client against the signed Response |
+| A timeout refund or missed change lost because the offer expired | The admission cutoff (5.4) and prompt replays (7.5) |
 | A replay or crash paying change twice | The socket's single settle write and stored `scheme_result` (draft-00 6.4); deterministic signing (7.4) |
 
 **Output front-running.** Someone who sees a credential in transit or in a log can copy its `B'` values into a credential of its own, for example a price-0 swap (section 11) whose change is one of the victim's outputs, and have it settle first, even while the victim's action is still running. This gains it nothing and costs the victim nothing. The front-runner cannot unblind what it gets back, so the output it spent its own value on is lost to it. The victim's credential is unaffected at every stage, because verification never consults the signed-output table (6.2): before commit it is admitted as usual; after commit, a replay still reaches the socket's replay path, so a PENDING answer, the stored response, a missed receipt and a timeout refund all stay available (draft-00 6.4, 7.5); and its settlement signs each of its `B'` under its own keyset and amount (7.4), which only the victim can unblind. Had verification rejected outputs signed before, as v0.4 did, the same copy would have turned every replay of a committed credential into BAD\_CREDENTIAL, and the victim would have lost its change or its whole refund.
@@ -555,6 +566,7 @@ The socket's considerations (draft-00 section 12) apply. These are the scheme's 
 - **Store loss.** Without withdrawal, notes spent since the last durable copy of the use store can be spent again until their keyset expires, which costs free actions, never bitcoin.
 - **Key compromise.** A stolen issuer key forges notes, so the keyset is revoked and replaced at once (section 10), and honest notes on it are lost. Keys live in a separate signer process.
 - **Not post-quantum.** A quantum attacker could forge notes; blinding keeps past spends private.
+- **Late replays.** Under draft-00 as written, a replay after its offer's deadline is STALE (5.4), so a client that does not replay in time loses its refund or change. The admission cutoff gives every client at least 60 seconds after the timeout.
 - **Restore leaks a wallet.** NUT-09 and NUT-07 requests show the issuer a set of outputs and notes that belong together, as in any Cashu wallet.
 
 ## 18. Test vector requirements
@@ -616,9 +628,9 @@ BNAP-Fund: amount=2100, pubkey="02c4…"
 
 HTTP/1.1 402 Payment Required
 WWW-Authenticate: BNAP offer="…"      route scope: bnap:notes up to 2,100 sat, 500 sat per 1,000 tokens
-WWW-Authenticate: BNAP offer="…"      exact scope, metered: bnap:notes up to 2,100 sat at 500 sat
-                                       per 1,000 tokens, with fund_quote {quote, request = "lnbc21u1…",
-                                       amount 2100, expiry, pubkey 02c4…}
+WWW-Authenticate: BNAP offer="…"      exact scope, metered, expires in 10 minutes: bnap:notes up to
+                                       2,100 sat at 500 sat per 1,000 tokens, with fund_quote {quote,
+                                       request = "lnbc21u1…", amount 2100, expiry, pubkey 02c4…}
 BNAP-Error: AAEBAgEQ                   (REQUIRED)
 
 (the agent checks the quote's key and amount, saves quote, key and offer, and pays through NWC)
@@ -639,7 +651,7 @@ event: bnap-receipt
 data: …                                OK, 850 tokens; charged 425 sat; scheme_result signs 1,675 sat of change
 ```
 
-With no attestation, the 850 tokens cost ⌈850 × 500 / 1000⌉ = 425 sat. The value is the quote's 2,100 sat, so the change is 1,675 sat, signed as the ladder outputs of 1,024, 512, 128, 8, 2 and 1 sat. Every later call spends those notes against the cached route offer, sending `offer_id`.
+The exact offer lives 10 minutes. With the default `pending_timeout` of 300 s, it admits new credentials for its first 4 minutes (5.4), and the quote's invoice expires at that cutoff (8.2); a client that sends later gets STALE, consumes nothing, and redeems the paid quote with the route offer. With no attestation, the 850 tokens cost ⌈850 × 500 / 1000⌉ = 425 sat. The value is the quote's 2,100 sat, so the change is 1,675 sat, signed as the ladder outputs of 1,024, 512, 128, 8, 2 and 1 sat. Every later call spends those notes against the cached route offer, sending `offer_id`.
 
 ## Appendix B. Provisional decisions
 
@@ -674,4 +686,5 @@ Each of these is marked "(provisional)" where it is made, and each is open to ow
 | P23 | 13.2 | `UNIT_MISMATCH` folds into `UNKNOWN_KEYSET` |
 | P24 | 15 | A wallet may retry without a binding after a BINDING error |
 | P25 | 19 | Suites 1 to 3 become their own scheme IDs |
+| P29 | 5.4, 7.5, 8.2, 15 | Admission cutoff: no new notes commit later than the deadline minus `pending_timeout` minus 60 s, applied after the replay lookup; offers that list notes admit for at least 60 s; fund quotes expire by the cutoff; wallets replay before the deadline |
 | P28 | 6.2, 13.1 | Verification reads no use state; v0.4's check that no output was signed before is dropped, and `bnap:notes/OUTPUT_REUSED` is reserved |
