@@ -544,7 +544,7 @@ A notes wallet SHOULD send the canonical ladder (6.3), send `offer_id` instead o
 
 ## 16. Withdrawal
 
-Withdrawal (v0.4's BNAP-W) is not part of this document. An issuer that offers no withdrawal extension MUST refuse NUT-05 melts of BNAP notes (4.2). An operator that enables one MUST, as v0.4 required, write spend records synchronously to durable, replicated storage before answering, cap withdrawals per epoch and per request, pay out only through a NUT-05 melt that carries a witness by every input's `K` in the key-secret `melt` context, and list `melt` in its key-secret `contexts` (4.2), and keep the issuer key in a separate signer process. Paying out to arbitrary invoices moves an operator from merchant toward money transmitter, so withdrawal needs legal review in each jurisdiction.
+Withdrawal (v0.4's BNAP-W) is not part of this document. An issuer that offers no withdrawal extension MUST refuse NUT-05 melts of BNAP notes (4.2). An operator that enables one MUST, as v0.4 required, write spend records synchronously to durable, replicated storage before answering, cap withdrawals per epoch and per request, pay out only through a NUT-05 melt that carries a witness by every input's `K` in the key-secret `melt` context (4.2), list `melt` in its key-secret `contexts`, and keep the issuer key in a separate signer process. Paying out to arbitrary invoices moves an operator from merchant toward money transmitter, so withdrawal needs legal review in each jurisdiction.
 
 ## 17. Security and privacy considerations
 
