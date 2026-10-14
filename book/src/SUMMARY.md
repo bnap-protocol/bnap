@@ -12,7 +12,8 @@
 
 # Schemes
 
-- [bnap:notes (v0.4 profile)](spec/schemes/bnap-notes.md)
+- [bnap:notes (draft-00)](spec/schemes/bnap-notes-draft-00.md)
+- [bnap:notes (v0.4 profile, superseded)](spec/schemes/bnap-notes.md)
 
 # History
 
