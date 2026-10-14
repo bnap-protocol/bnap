@@ -28,7 +28,7 @@ The envelope that carries the payment is the BNAP socket ([draft-bnap-socket][so
 A server answers a request that needs payment with status 402 and these fields:
 
 1. `X-Cashu`: a payment request as [NUT-24][24] defines it, encoded as [NUT-18][18] (`creqA`) or [NUT-26][26] (`creqB`), with:
-   - `a`: the amount of the offer's `bnap:notes` entry in sat, before attestations: the price, or for a metered action the most it can cost. A discount the wallet earns lowers what it must send (see [Paying](#paying), step 3);
+   - `a`: the amount of the offer's `bnap:notes` entry in sat, before attestations: the price, or for a metered action the most it can cost. An attestation the wallet earns, a waive, a discount or a quota, lowers what it must send (see [Paying](#paying), step 3);
    - `u`: `"sat"`;
    - `m`: a one-element list, the issuer's URL;
    - `s`: `true`;
@@ -68,7 +68,7 @@ A wallet that implements this NUT:
 
 1. verifies the BNAP offer as the socket requires ([socket][socket], section 4.4): its signature under a key of the origin's pinned manifest, its expiry, and its scope;
 2. checks that the `i` of the `X-Cashu` request equals the OfferID of the offer, and uses the offer, not the payment request, for everything that follows;
-3. builds a `bnap:notes` credential body ([notes][notes], section 3): its proofs as inputs, the quote ID when it redeems a funding quote, and blinded outputs of 1, 2, 4, ... sat up to the highest power of two not above the credential's value. The **value** is the sum of the proofs plus the amount of the quote, less the proofs' input fees ([NUT-02][02]; a quote pays no fee; [notes][notes], section 6.3). It must be at least the offer's effective price after attestations, `price(amount)` of [socket][socket] section 7, where the server compares the two: the price less any discount, and for a metered action the ceiling less any discount. Under the offer above, a wallet that signs with Web Bot Auth earns the offer's 20% discount and needs a value of 2,100 - 420 = 1,680 sat, not the 2,100 sat of `a`;
+3. builds a `bnap:notes` credential body ([notes][notes], section 3): its proofs as inputs, the quote ID when it redeems a funding quote, and blinded outputs of 1, 2, 4, ... sat up to the highest power of two not above the credential's value. The **value** is the sum of the proofs plus the amount of the quote, less the proofs' input fees ([NUT-02][02]; a quote pays no fee; [notes][notes], section 6.3). It must be at least the offer's effective price, `price(amount)` of [socket][socket] section 7, where the server compares the two: the amount of the offer's `bnap:notes` entry, the ceiling for a metered action, after every waive, discount and quota attestation of the offer that the credential carries and that verifies. A waive, or a quota whose counter has room, makes it 0, and each discount lowers it. Under the offer above, a wallet that signs with Web Bot Auth earns the offer's 20% discount and needs a value of 2,100 - 420 = 1,680 sat, not the 2,100 sat of `a`;
 4. signs the socket's Digest ([socket][socket], section 5.2) with the key of each proof, which is the external context of [key-secret proofs][xx-keys], and with the quote's [NUT-20][20] key when it redeems a quote;
 5. retries the request with the credential in the `BNAP-Credential` field.
 
