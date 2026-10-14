@@ -1,0 +1,550 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/bnap-protocol/bnap/vectors/cases/schema/offer.schema.json",
+ "title": "BNAP conformance cases: The Offer",
+ "type": "object",
+ "required": [
+  "bnapCases",
+  "area",
+  "title",
+  "schema",
+  "generator",
+  "source",
+  "numberOfTests",
+  "header",
+  "notes",
+  "testGroups"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "bnapCases": {
+   "const": 1
+  },
+  "area": {
+   "const": "offer"
+  },
+  "title": {
+   "type": "string"
+  },
+  "schema": {
+   "const": "schema/offer.schema.json"
+  },
+  "generator": {
+   "type": "string"
+  },
+  "source": {
+   "type": "string"
+  },
+  "numberOfTests": {
+   "type": "integer"
+  },
+  "header": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "notes": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "object",
+    "required": [
+     "bugType",
+     "description"
+    ],
+    "additionalProperties": false,
+    "properties": {
+     "bugType": {
+      "type": "string"
+     },
+     "description": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "testGroups": {
+   "type": "array",
+   "items": {
+    "allOf": [
+     {
+      "type": "object",
+      "required": [
+       "type",
+       "section",
+       "description",
+       "tests"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "type": {
+        "enum": [
+         "OfferParse",
+         "OfferRules",
+         "OfferIdAndSignature",
+         "ClientOfferCheck",
+         "GateOfferCheck"
+        ]
+       },
+       "section": {
+        "type": "string"
+       },
+       "description": {
+        "type": "string"
+       },
+       "tests": {
+        "type": "array"
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "OfferParse"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "offer",
+               "max_offer"
+              ],
+              "properties": {
+               "offer": {
+                "type": "string",
+                "pattern": "^([0-9a-f]{2})*$"
+               },
+               "max_offer": {
+                "type": "integer"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "OfferRules"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "offer"
+              ],
+              "properties": {
+               "offer": {
+                "type": "string",
+                "pattern": "^([0-9a-f]{2})*$"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "OfferIdAndSignature"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "offer"
+              ],
+              "properties": {
+               "offer": {
+                "type": "string",
+                "pattern": "^([0-9a-f]{2})*$"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "ClientOfferCheck"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "offer",
+               "now",
+               "origin",
+               "pin_keys",
+               "scope",
+               "route_scope"
+              ],
+              "properties": {
+               "offer": {
+                "type": "string",
+                "pattern": "^([0-9a-f]{2})*$"
+               },
+               "now": {
+                "type": "integer"
+               },
+               "origin": {
+                "type": "string"
+               },
+               "pin_keys": {
+                "anyOf": [
+                 {
+                  "type": "array"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               },
+               "scope": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{2})*$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               },
+               "route_scope": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{2})*$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "GateOfferCheck"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "now",
+               "mac_keys",
+               "listed_offer_keys",
+               "cache",
+               "action_scope",
+               "route_scope",
+               "pay_scheme",
+               "attest_schemes",
+               "max_offer"
+              ],
+              "properties": {
+               "offer": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{2})*$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               },
+               "offer_id": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{2})*$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               },
+               "now": {
+                "type": "integer"
+               },
+               "mac_keys": {
+                "type": "array"
+               },
+               "listed_offer_keys": {
+                "type": "array"
+               },
+               "cache": {
+                "type": "object"
+               },
+               "action_scope": {
+                "type": "string",
+                "pattern": "^([0-9a-f]{2})*$"
+               },
+               "route_scope": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{2})*$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               },
+               "pay_scheme": {
+                "anyOf": [
+                 {
+                  "type": "string"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               },
+               "attest_schemes": {
+                "type": "array"
+               },
+               "max_offer": {
+                "type": "integer"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ "$defs": {
+  "test": {
+   "type": "object",
+   "required": [
+    "tcId",
+    "comment",
+    "flags",
+    "sections",
+    "inputs",
+    "result"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "tcId": {
+     "type": "integer"
+    },
+    "comment": {
+     "type": "string",
+     "minLength": 1
+    },
+    "flags": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "sections": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "string"
+     }
+    },
+    "inputs": {
+     "type": "object"
+    },
+    "result": {
+     "enum": [
+      "valid",
+      "invalid",
+      "acceptable"
+     ]
+    },
+    "error": {
+     "enum": [
+      "VERSION",
+      "MALFORMED",
+      "TOO_LARGE",
+      "BAD_OFFER",
+      "STALE",
+      "WRONG_SCOPE",
+      "NOT_OFFERED",
+      "POLICY",
+      "UNDERPAID",
+      "BAD_CREDENTIAL",
+      "BINDING",
+      "SPENT",
+      "PENDING",
+      "RATE_LIMITED",
+      "UNAVAILABLE",
+      "REQUIRED",
+      "CLIENT_REJECT",
+      "MANIFEST_REJECT"
+     ]
+    },
+    "errorCode": {
+     "type": "integer"
+    },
+    "acceptableErrors": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "VERSION",
+       "MALFORMED",
+       "TOO_LARGE",
+       "BAD_OFFER",
+       "STALE",
+       "WRONG_SCOPE",
+       "NOT_OFFERED",
+       "POLICY",
+       "UNDERPAID",
+       "BAD_CREDENTIAL",
+       "BINDING",
+       "SPENT",
+       "PENDING",
+       "RATE_LIMITED",
+       "UNAVAILABLE",
+       "REQUIRED"
+      ]
+     }
+    },
+    "reason": {
+     "type": "string"
+    },
+    "expected": {
+     "type": "object"
+    }
+   },
+   "if": {
+    "properties": {
+     "result": {
+      "const": "invalid"
+     }
+    },
+    "required": [
+     "result"
+    ]
+   },
+   "then": {
+    "required": [
+     "error"
+    ]
+   }
+  }
+ }
+}

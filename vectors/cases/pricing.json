@@ -1,0 +1,1367 @@
+{
+ "bnapCases": 1,
+ "area": "pricing",
+ "title": "Pricing, admission and metering",
+ "schema": "schema/pricing.schema.json",
+ "generator": "conformance/gen_cases.py",
+ "source": "spec/socket-draft-00.md (doc rev 39), spec/ERRATA.md, spec/DECISIONS.md, registry/generated/registry.json, reference/python/bnap_ref.py",
+ "numberOfTests": 47,
+ "header": [
+  "price() and admit of draft-00 section 7, in offer order. Each attestation lists whether it",
+  "verified and, for a quota, whether its counter has room. Admission for a credential without",
+  "pay prices from any positive base (see the NoPayBase note): only a waive, a 10,000 bp discount",
+  "or a quota with room bring it to 0. Class None value schemes are admissible only at price 0",
+  "(DECISIONS row 25)."
+ ],
+ "notes": {
+  "Valid": {
+   "bugType": "BASIC",
+   "description": "A well-formed input every implementation must accept."
+  },
+  "Multiply": {
+   "bugType": "BASIC",
+   "description": "Discounts multiply and each step rounds the amount taken off down."
+  },
+  "OrderMatters": {
+   "bugType": "EDGE",
+   "description": "Rounding makes the result depend on order: the offer's order rules."
+  },
+  "Quota": {
+   "bugType": "BASIC",
+   "description": "A quota applies only while p > 0, the first verified one with room."
+  },
+  "Policy": {
+   "bugType": "POLICY",
+   "description": "A required attestation did not verify."
+  },
+  "Underpaid": {
+   "bugType": "UNDERPAID",
+   "description": "Value below the effective price."
+  },
+  "NoPayBase": {
+   "bugType": "EDGE",
+   "description": "draft-00 7 writes price(entry.amount, or 0 if the credential has no pay), which makes its own 'p > 0 and no pay' check unreachable and would admit any attestation-only credential for free. These cases price a credential without pay from a positive base; a waive, a 10,000 bp discount or a quota with room admit it, nothing else does. Reported as an erratum candidate."
+  },
+  "Overpayment": {
+   "bugType": "BASIC",
+   "description": "Value above the price is admitted; a scheme that can return change does."
+  },
+  "Metering": {
+   "bugType": "BASIC",
+   "description": "charged = min(price(ceil(units x rate / 1000)), price(amount)), exactly."
+  },
+  "ClassRule": {
+   "bugType": "MALFORMED",
+   "description": "An offer no gate may build."
+  }
+ },
+ "testGroups": [
+  {
+   "type": "Price",
+   "section": "7",
+   "description": "price(base) over the attestations in offer order.",
+   "tests": [
+    {
+     "tcId": 1,
+     "comment": "no attestations",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": []
+     },
+     "result": "valid",
+     "expected": {
+      "price": 2100,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 2,
+     "comment": "a verified waive",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "waive",
+        "verified": true,
+        "class": "A"
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 0,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 3,
+     "comment": "a waive that did not verify",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "waive",
+        "verified": false,
+        "class": "A"
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 2100,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 4,
+     "comment": "one 20% discount (draft-00 10.3)",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 2000
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 1680,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 5,
+     "comment": "two 20% discounts multiply: 36% off, never 40%",
+     "flags": [
+      "Multiply"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 2000
+       },
+       {
+        "scheme": "nip:98",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 2000
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 1344,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 6,
+     "comment": "base 5: 3,333 bp then 5,001 bp",
+     "flags": [
+      "OrderMatters"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 5,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 3333
+       },
+       {
+        "scheme": "nip:98",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 5001
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 2,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 7,
+     "comment": "base 5: 5,001 bp then 3,333 bp",
+     "flags": [
+      "OrderMatters"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 5,
+      "attests": [
+       {
+        "scheme": "nip:98",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 5001
+       },
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 3333
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 3,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 8,
+     "comment": "a 10,000 bp discount",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 10000
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 0,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 9,
+     "comment": "rounding: 999 with 3,333 bp takes off 332",
+     "flags": [
+      "Multiply"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 999,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 3333
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 667,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 10,
+     "comment": "a discount that did not verify has no effect",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": false,
+        "class": "A",
+        "value": 2000
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 2100,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 11,
+     "comment": "a quota with room",
+     "flags": [
+      "Quota"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "quota",
+        "verified": true,
+        "class": "A",
+        "value": 5,
+        "epoch": 60,
+        "room": true
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 0,
+      "quota_index": 0
+     }
+    },
+    {
+     "tcId": 12,
+     "comment": "a full quota",
+     "flags": [
+      "Quota"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "quota",
+        "verified": true,
+        "class": "A",
+        "value": 5,
+        "epoch": 60,
+        "room": false
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 2100,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 13,
+     "comment": "a quota after a waive is not used",
+     "flags": [
+      "Quota"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "waive",
+        "verified": true,
+        "class": "A"
+       },
+       {
+        "scheme": "nip:98",
+        "effect": "quota",
+        "verified": true,
+        "class": "A",
+        "value": 5,
+        "epoch": 60,
+        "room": true
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 0,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 14,
+     "comment": "first quota full, second with room: the second is used",
+     "flags": [
+      "Quota"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "quota",
+        "verified": true,
+        "class": "A",
+        "value": 5,
+        "epoch": 60,
+        "room": false
+       },
+       {
+        "scheme": "nip:98",
+        "effect": "quota",
+        "verified": true,
+        "class": "A",
+        "value": 5,
+        "epoch": 60,
+        "room": true
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 0,
+      "quota_index": 1
+     }
+    },
+    {
+     "tcId": 15,
+     "comment": "a quota that did not verify is skipped",
+     "flags": [
+      "Quota"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "quota",
+        "verified": false,
+        "class": "A",
+        "value": 5,
+        "epoch": 60,
+        "room": true
+       },
+       {
+        "scheme": "nip:98",
+        "effect": "quota",
+        "verified": true,
+        "class": "A",
+        "value": 5,
+        "epoch": 60,
+        "room": true
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 0,
+      "quota_index": 1
+     }
+    },
+    {
+     "tcId": 16,
+     "comment": "a discount then a quota: the quota still zeroes",
+     "flags": [
+      "Quota"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "base": 2100,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 2000
+       },
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "quota",
+        "verified": true,
+        "class": "A",
+        "value": 5,
+        "epoch": 60,
+        "room": true
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 0,
+      "quota_index": 1
+     }
+    }
+   ]
+  },
+  {
+   "type": "Admit",
+   "section": "7",
+   "description": "admit: amount is the chosen pay entry's amount, null without pay; value is the scheme's verified value.",
+   "tests": [
+    {
+     "tcId": 17,
+     "comment": "required attestation verified, value covers the price",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "amount": 21,
+      "value": 21,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "required",
+        "verified": true,
+        "class": "A"
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 21,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 18,
+     "comment": "required attestation missing",
+     "flags": [
+      "Policy"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "amount": 21,
+      "value": 21,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "required",
+        "verified": false,
+        "class": "A"
+       }
+      ]
+     },
+     "result": "invalid",
+     "error": "POLICY",
+     "errorCode": 8
+    },
+    {
+     "tcId": 19,
+     "comment": "required attestation missing beats a verified waive",
+     "flags": [
+      "Policy"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "amount": 21,
+      "value": null,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "required",
+        "verified": false,
+        "class": "A"
+       },
+       {
+        "scheme": "nip:98",
+        "effect": "waive",
+        "verified": true,
+        "class": "A"
+       }
+      ]
+     },
+     "result": "invalid",
+     "error": "POLICY",
+     "errorCode": 8
+    },
+    {
+     "tcId": 20,
+     "comment": "no pay, a verified waive (the section 14 attestation-only case)",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "amount": null,
+      "value": null,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "waive",
+        "verified": true,
+        "class": "A"
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 0,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 21,
+     "comment": "no pay, the waive did not verify",
+     "flags": [
+      "NoPayBase",
+      "Underpaid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "amount": null,
+      "value": null,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "waive",
+        "verified": false,
+        "class": "A"
+       }
+      ]
+     },
+     "result": "invalid",
+     "error": "UNDERPAID",
+     "errorCode": 9
+    },
+    {
+     "tcId": 22,
+     "comment": "no pay, a 20% discount only",
+     "flags": [
+      "NoPayBase",
+      "Underpaid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "amount": null,
+      "value": null,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 2000
+       }
+      ]
+     },
+     "result": "invalid",
+     "error": "UNDERPAID",
+     "errorCode": 9
+    },
+    {
+     "tcId": 23,
+     "comment": "no pay, a 10,000 bp discount",
+     "flags": [
+      "NoPayBase"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "amount": null,
+      "value": null,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 10000
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 0,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 24,
+     "comment": "no pay, a quota with room",
+     "flags": [
+      "NoPayBase",
+      "Quota"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "amount": null,
+      "value": null,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "quota",
+        "verified": true,
+        "class": "A",
+        "value": 5,
+        "epoch": 60,
+        "room": true
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 0,
+      "quota_index": 0
+     }
+    },
+    {
+     "tcId": 25,
+     "comment": "no pay, a full quota",
+     "flags": [
+      "NoPayBase",
+      "Underpaid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "amount": null,
+      "value": null,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "quota",
+        "verified": true,
+        "class": "A",
+        "value": 5,
+        "epoch": 60,
+        "room": false
+       }
+      ]
+     },
+     "result": "invalid",
+     "error": "UNDERPAID",
+     "errorCode": 9
+    },
+    {
+     "tcId": 26,
+     "comment": "value one below the price",
+     "flags": [
+      "Underpaid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "amount": 21,
+      "value": 20,
+      "attests": []
+     },
+     "result": "invalid",
+     "error": "UNDERPAID",
+     "errorCode": 9
+    },
+    {
+     "tcId": 27,
+     "comment": "value equal to the price",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "amount": 21,
+      "value": 21,
+      "attests": []
+     },
+     "result": "valid",
+     "expected": {
+      "price": 21,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 28,
+     "comment": "value above the price",
+     "flags": [
+      "Overpayment"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "amount": 21,
+      "value": 30,
+      "attests": []
+     },
+     "result": "valid",
+     "expected": {
+      "price": 21,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 29,
+     "comment": "draft-00 10.3: 2,100 ceiling, 20% off, notes worth 1,680",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7",
+      "10.3"
+     ],
+     "inputs": {
+      "amount": 2100,
+      "value": 1680,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 2000
+       }
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "price": 1680,
+      "quota_index": null
+     }
+    },
+    {
+     "tcId": 30,
+     "comment": "draft-00 10.3 with notes worth 1,679",
+     "flags": [
+      "Underpaid"
+     ],
+     "sections": [
+      "7",
+      "10.3"
+     ],
+     "inputs": {
+      "amount": 2100,
+      "value": 1679,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 2000
+       }
+      ]
+     },
+     "result": "invalid",
+     "error": "UNDERPAID",
+     "errorCode": 9
+    }
+   ]
+  },
+  {
+   "type": "Metered",
+   "section": "7",
+   "description": "The metered charge at settlement. quota_index is the admission decision.",
+   "tests": [
+    {
+     "tcId": 31,
+     "comment": "draft-00 10.3: 850 tokens at 500 per 1,000, 20% off",
+     "flags": [
+      "Metering"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "units": "850",
+      "rate": 500,
+      "amount": 2100,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 2000
+       }
+      ],
+      "quota_index": null
+     },
+     "result": "valid",
+     "expected": {
+      "charged": 340
+     }
+    },
+    {
+     "tcId": 32,
+     "comment": "no units",
+     "flags": [
+      "Metering"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "units": "0",
+      "rate": 500,
+      "amount": 2100,
+      "attests": [],
+      "quota_index": null
+     },
+     "result": "valid",
+     "expected": {
+      "charged": 0
+     }
+    },
+    {
+     "tcId": 33,
+     "comment": "one unit at 500 per 1,000 rounds up to 1",
+     "flags": [
+      "Metering"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "units": "1",
+      "rate": 500,
+      "amount": 2100,
+      "attests": [],
+      "quota_index": null
+     },
+     "result": "valid",
+     "expected": {
+      "charged": 1
+     }
+    },
+    {
+     "tcId": 34,
+     "comment": "units beyond the ceiling are charged the ceiling",
+     "flags": [
+      "Metering"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "units": "10000",
+      "rate": 500,
+      "amount": 2100,
+      "attests": [
+       {
+        "scheme": "httpsig:web-bot-auth",
+        "effect": "discount",
+        "verified": true,
+        "class": "A",
+        "value": 2000
+       }
+      ],
+      "quota_index": null
+     },
+     "result": "valid",
+     "expected": {
+      "charged": 1680
+     }
+    },
+    {
+     "tcId": 35,
+     "comment": "a product beyond 2^64 still yields the ceiling",
+     "flags": [
+      "Metering"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "units": "18446744073709551616",
+      "rate": 1048576,
+      "amount": 2100,
+      "attests": [],
+      "quota_index": null
+     },
+     "result": "valid",
+     "expected": {
+      "charged": 2100
+     }
+    },
+    {
+     "tcId": 36,
+     "comment": "a waive at admission: nothing charged",
+     "flags": [
+      "Metering"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "units": "850",
+      "rate": 500,
+      "amount": 2100,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "waive",
+        "verified": true,
+        "class": "A"
+       }
+      ],
+      "quota_index": null
+     },
+     "result": "valid",
+     "expected": {
+      "charged": 0
+     }
+    },
+    {
+     "tcId": 37,
+     "comment": "the quota chosen at admission is reused, not consumed again",
+     "flags": [
+      "Metering"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "units": "850",
+      "rate": 500,
+      "amount": 2100,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "quota",
+        "verified": true,
+        "class": "A",
+        "value": 5,
+        "epoch": 60,
+        "room": true
+       }
+      ],
+      "quota_index": 0
+     },
+     "result": "valid",
+     "expected": {
+      "charged": 0
+     }
+    },
+    {
+     "tcId": 38,
+     "comment": "a quota that was full at admission stays unused",
+     "flags": [
+      "Metering"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "units": "850",
+      "rate": 500,
+      "amount": 2100,
+      "attests": [
+       {
+        "scheme": "httpauth:DPoP",
+        "effect": "quota",
+        "verified": true,
+        "class": "A",
+        "value": 5,
+        "epoch": 60,
+        "room": true
+       }
+      ],
+      "quota_index": null
+     },
+     "result": "valid",
+     "expected": {
+      "charged": 425
+     }
+    }
+   ]
+  },
+  {
+   "type": "BuildRules",
+   "section": "7",
+   "description": "Offer-building rules for the entries of one offer.",
+   "tests": [
+    {
+     "tcId": 39,
+     "comment": "class None value scheme at price 0",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "entries": [
+       {
+        "role": "pay",
+        "scheme": "cashu:nut22",
+        "class": "none",
+        "amount": 0
+       }
+      ],
+      "metered": false
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 40,
+     "comment": "class None value scheme at price 21",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "entries": [
+       {
+        "role": "pay",
+        "scheme": "cashu:nut22",
+        "class": "none",
+        "amount": 21
+       }
+      ],
+      "metered": false
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "class-none-priced"
+    },
+    {
+     "tcId": 41,
+     "comment": "bearer attestation trying to discount",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "entries": [
+       {
+        "role": "attest",
+        "scheme": "httpauth:Bearer",
+        "class": "none",
+        "effect": "discount"
+       }
+      ],
+      "metered": false
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "class-none-discount"
+    },
+    {
+     "tcId": 42,
+     "comment": "bearer attestation trying to waive",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "entries": [
+       {
+        "role": "attest",
+        "scheme": "httpauth:Bearer",
+        "class": "none",
+        "effect": "waive"
+       }
+      ],
+      "metered": false
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "class-none-waive"
+    },
+    {
+     "tcId": 43,
+     "comment": "bearer attestation trying to carry a quota",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "entries": [
+       {
+        "role": "attest",
+        "scheme": "httpauth:Bearer",
+        "class": "none",
+        "effect": "quota"
+       }
+      ],
+      "metered": false
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "class-none-quota"
+    },
+    {
+     "tcId": 44,
+     "comment": "class O discount",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "entries": [
+       {
+        "role": "attest",
+        "scheme": "pp:0x0002",
+        "class": "O",
+        "effect": "discount"
+       }
+      ],
+      "metered": false
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 45,
+     "comment": "class A waive",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "entries": [
+       {
+        "role": "attest",
+        "scheme": "httpauth:DPoP",
+        "class": "A",
+        "effect": "waive"
+       }
+      ],
+      "metered": false
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 46,
+     "comment": "metered entry for httpauth:L402 (refund none, upto false)",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "entries": [
+       {
+        "role": "pay",
+        "scheme": "httpauth:L402",
+        "class": "O",
+        "amount": 2100,
+        "refund": "none",
+        "upto": false
+       }
+      ],
+      "metered": true
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "metered-not-refundable"
+    },
+    {
+     "tcId": 47,
+     "comment": "metered entry for bnap:notes (refund atomic, upto false)",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "entries": [
+       {
+        "role": "pay",
+        "scheme": "bnap:notes",
+        "class": "S",
+        "amount": 2100,
+        "refund": "atomic",
+        "upto": false
+       }
+      ],
+      "metered": true
+     },
+     "result": "valid"
+    }
+   ]
+  }
+ ]
+}

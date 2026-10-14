@@ -1,0 +1,316 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/bnap-protocol/bnap/vectors/cases/schema/outcomes.schema.json",
+ "title": "BNAP conformance cases: Commit, replay, settle and timeout as state-machine traces",
+ "type": "object",
+ "required": [
+  "bnapCases",
+  "area",
+  "title",
+  "schema",
+  "generator",
+  "source",
+  "numberOfTests",
+  "header",
+  "notes",
+  "testGroups"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "bnapCases": {
+   "const": 1
+  },
+  "area": {
+   "const": "outcomes"
+  },
+  "title": {
+   "type": "string"
+  },
+  "schema": {
+   "const": "schema/outcomes.schema.json"
+  },
+  "generator": {
+   "type": "string"
+  },
+  "source": {
+   "type": "string"
+  },
+  "numberOfTests": {
+   "type": "integer"
+  },
+  "header": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "notes": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "object",
+    "required": [
+     "bugType",
+     "description"
+    ],
+    "additionalProperties": false,
+    "properties": {
+     "bugType": {
+      "type": "string"
+     },
+     "description": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "testGroups": {
+   "type": "array",
+   "items": {
+    "allOf": [
+     {
+      "type": "object",
+      "required": [
+       "type",
+       "section",
+       "description",
+       "tests"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "type": {
+        "enum": [
+         "Trace",
+         "ReusableAdmissionWindow"
+        ]
+       },
+       "section": {
+        "type": "string"
+       },
+       "description": {
+        "type": "string"
+       },
+       "tests": {
+        "type": "array"
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "Trace"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "replay_window",
+               "pending_timeout",
+               "steps"
+              ],
+              "properties": {
+               "replay_window": {
+                "type": "integer"
+               },
+               "pending_timeout": {
+                "type": "integer"
+               },
+               "steps": {
+                "type": "array"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "ReusableAdmissionWindow"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "expires",
+               "now",
+               "replay_window"
+              ],
+              "properties": {
+               "expires": {
+                "type": "integer"
+               },
+               "now": {
+                "type": "integer"
+               },
+               "replay_window": {
+                "type": "integer"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ "$defs": {
+  "test": {
+   "type": "object",
+   "required": [
+    "tcId",
+    "comment",
+    "flags",
+    "sections",
+    "inputs",
+    "result"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "tcId": {
+     "type": "integer"
+    },
+    "comment": {
+     "type": "string",
+     "minLength": 1
+    },
+    "flags": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "sections": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "string"
+     }
+    },
+    "inputs": {
+     "type": "object"
+    },
+    "result": {
+     "enum": [
+      "valid",
+      "invalid",
+      "acceptable"
+     ]
+    },
+    "error": {
+     "enum": [
+      "VERSION",
+      "MALFORMED",
+      "TOO_LARGE",
+      "BAD_OFFER",
+      "STALE",
+      "WRONG_SCOPE",
+      "NOT_OFFERED",
+      "POLICY",
+      "UNDERPAID",
+      "BAD_CREDENTIAL",
+      "BINDING",
+      "SPENT",
+      "PENDING",
+      "RATE_LIMITED",
+      "UNAVAILABLE",
+      "REQUIRED",
+      "CLIENT_REJECT",
+      "MANIFEST_REJECT"
+     ]
+    },
+    "errorCode": {
+     "type": "integer"
+    },
+    "acceptableErrors": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "VERSION",
+       "MALFORMED",
+       "TOO_LARGE",
+       "BAD_OFFER",
+       "STALE",
+       "WRONG_SCOPE",
+       "NOT_OFFERED",
+       "POLICY",
+       "UNDERPAID",
+       "BAD_CREDENTIAL",
+       "BINDING",
+       "SPENT",
+       "PENDING",
+       "RATE_LIMITED",
+       "UNAVAILABLE",
+       "REQUIRED"
+      ]
+     }
+    },
+    "reason": {
+     "type": "string"
+    },
+    "expected": {
+     "type": "object"
+    }
+   },
+   "if": {
+    "properties": {
+     "result": {
+      "const": "invalid"
+     }
+    },
+    "required": [
+     "result"
+    ]
+   },
+   "then": {
+    "required": [
+     "error"
+    ]
+   }
+  }
+ }
+}

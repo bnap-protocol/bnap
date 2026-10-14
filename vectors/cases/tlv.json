@@ -1,0 +1,979 @@
+{
+ "bnapCases": 1,
+ "area": "tlv",
+ "title": "TLV streams, the even/odd rule, entry lists and base64url",
+ "schema": "schema/tlv.schema.json",
+ "generator": "conformance/gen_cases.py",
+ "source": "spec/socket-draft-00.md (doc rev 39), spec/ERRATA.md, spec/DECISIONS.md, registry/generated/registry.json, reference/python/bnap_ref.py",
+ "numberOfTests": 53,
+ "header": [
+  "TLV streams are BOLT 1 records with strictly increasing types (draft-00 section 2).",
+  "A receiver MUST reject an unknown even type as MALFORMED and MUST ignore an unknown odd",
+  "type. Nested streams use only 0-239, the experimental range and GREASE. Objects in the",
+  "EvenOddRule group are complete and correctly signed, so the type is the only question."
+ ],
+ "notes": {
+  "Valid": {
+   "bugType": "BASIC",
+   "description": "A well-formed input every implementation must accept."
+  },
+  "Order": {
+   "bugType": "MALFORMED",
+   "description": "Types not strictly increasing."
+  },
+  "Duplicate": {
+   "bugType": "MALFORMED",
+   "description": "The same type twice."
+  },
+  "Truncated": {
+   "bugType": "MALFORMED",
+   "description": "A length that runs past the end of the buffer."
+  },
+  "NonMinimal": {
+   "bugType": "MALFORMED",
+   "description": "A non-minimal BigSize for a type or a length."
+  },
+  "UnknownEven": {
+   "bugType": "MALFORMED",
+   "description": "An unknown even type."
+  },
+  "UnknownOdd": {
+   "bugType": "BASIC",
+   "description": "An unknown odd type, which a receiver ignores."
+  },
+  "Grease": {
+   "bugType": "BASIC",
+   "description": "A GREASE record: odd, 3,000,000,001 to 3,000,000,999."
+  },
+  "NestedRange": {
+   "bugType": "EDGE",
+   "description": "A nested record outside 0-239, experimental and GREASE. draft-00 says nested streams use only those ranges but names no error for an odd type outside them, so rejecting or ignoring it are both acceptable; bnap_conf rejects."
+  },
+  "Base64": {
+   "bugType": "MALFORMED",
+   "description": "Not canonical unpadded base64url."
+  }
+ },
+ "testGroups": [
+  {
+   "type": "StreamParse",
+   "section": "2",
+   "description": "Parse a bare TLV stream.",
+   "tests": [
+    {
+     "tcId": 1,
+     "comment": "empty stream",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": ""
+     },
+     "result": "valid",
+     "expected": {
+      "records": []
+     }
+    },
+    {
+     "tcId": 2,
+     "comment": "type 0, empty value",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "0000"
+     },
+     "result": "valid",
+     "expected": {
+      "records": [
+       [
+        0,
+        ""
+       ]
+      ]
+     }
+    },
+    {
+     "tcId": 3,
+     "comment": "two records",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "000101020100"
+     },
+     "result": "valid",
+     "expected": {
+      "records": [
+       [
+        0,
+        "01"
+       ],
+       [
+        2,
+        "00"
+       ]
+      ]
+     }
+    },
+    {
+     "tcId": 4,
+     "comment": "type 256 written as fd0100",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fd010003616263"
+     },
+     "result": "valid",
+     "expected": {
+      "records": [
+       [
+        256,
+        "616263"
+       ]
+      ]
+     }
+    },
+    {
+     "tcId": 5,
+     "comment": "type 253, empty value",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "0001fffd00fd00"
+     },
+     "result": "valid",
+     "expected": {
+      "records": [
+       [
+        0,
+        "ff"
+       ],
+       [
+        253,
+        ""
+       ]
+      ]
+     }
+    },
+    {
+     "tcId": 6,
+     "comment": "type 1 after type 2",
+     "flags": [
+      "Order"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "020101000101"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 7,
+     "comment": "type 1 twice",
+     "flags": [
+      "Duplicate"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "010100010100"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 8,
+     "comment": "length 5, one byte left",
+     "flags": [
+      "Truncated"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "000501"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 9,
+     "comment": "type with no length",
+     "flags": [
+      "Truncated"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "00"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 10,
+     "comment": "type 252 in three bytes",
+     "flags": [
+      "NonMinimal"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fd00fc00"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 11,
+     "comment": "length 1 in three bytes",
+     "flags": [
+      "NonMinimal"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "00fd000100"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 12,
+     "comment": "a type prefix with no value",
+     "flags": [
+      "Truncated"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "0000fd"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    }
+   ]
+  },
+  {
+   "type": "EvenOddRule",
+   "section": "2",
+   "description": "Complete objects with one extra record; parse as the named object.",
+   "tests": [
+    {
+     "tcId": 13,
+     "comment": "offer: odd type 1001 (reserved for future socket fields)",
+     "flags": [
+      "UnknownOdd"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "offer",
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040e1a76c567efb21b1d7ab933a699d4f77abd152a44115bc2f8ee52294208f28670914502745d641833cc539c74d3e110a597f7cd9bb558b205b73e6280d389c06f220eccbf37dc46826e9a3a38c3e3a683e48057c3d6c275f035c9ffd48cb5e7282affd03e9020102"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 14,
+     "comment": "offer: even type 1002",
+     "flags": [
+      "UnknownEven"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "offer",
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f04079728f39e65f8505dafc3506df6c947b6f96711238727d88bba393f5e56e7ff74e4a09908bc7f886ba53e5a06ea09f69a2d932282d4904d0cb51a0962c06e8b7f220e2ebc7c7c4a1a29daaabc4c79f3b6c1c44c5eaa190751ad7df733db74b9baf84fd03ea020102"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 15,
+     "comment": "offer: odd type 27 in the socket range",
+     "flags": [
+      "UnknownOdd"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "offer",
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f63686172676502011504037361741b020102f04046b4aa16517c5a8d9849dacfd0d6a1e8dc42b8ee6c7c7a9ab100c3058f21a541fcaf3e9cccc59290c32e9693b81f9ecf17b286b1cf7dd93c8df16af6d87e9133f220e996b9ff1f8511cf690c82e5e93ca97d48e97f9f44f017162f73f5387795aa83"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 16,
+     "comment": "offer: even type 28 in the socket range",
+     "flags": [
+      "UnknownEven"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "offer",
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f63686172676502011504037361741c020102f040a095100fafb470a852f799f4915dfe581c3dfcb4f4d12321fd0504eed66499ea4448d30b9753703d8496759bdde5775ca031e76481f5bb75f78fa842857584c8f22086884245a6d75c323ce25983290843285bccb52e4258f58fd55ea0b5bca2ef66"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 17,
+     "comment": "offer: odd type 241 in the signature range",
+     "flags": [
+      "UnknownOdd"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "offer",
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f1020102f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 18,
+     "comment": "offer: even type 244 in the signature range",
+     "flags": [
+      "UnknownEven"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "offer",
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9f4020102"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 19,
+     "comment": "offer: odd experimental type",
+     "flags": [
+      "UnknownOdd"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "offer",
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0409d25286c6c25a3f9929ca5cbf764d0c714478acb2ffe0e0e612ecc25d05c1bae192fd0d89f5211063fce2191b773030fc926e63f5d5849ba42b416bc4a39dbe2f220eea56c1fe1c7d08fbb7780a03ccd3c4d2c6c30e77ab51376a987940c7cc1f908fe3b9aca01020102"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 20,
+     "comment": "offer: even experimental type",
+     "flags": [
+      "UnknownEven"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "offer",
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040a178b37d3b3048ccef50b591a3231f04c85365526e65dc009ef9ee7362ae9969c8bc941286738c6fff51c40a69e7d009123c91bffd6dd58786a3a602f91d15b9f22083f1b672f9313e3f29c5c836d4f35140dce7ece845cd8ac96a9ba02212b52c60fe3b9aca00020102"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 21,
+     "comment": "offer: odd reserved type",
+     "flags": [
+      "UnknownOdd"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "offer",
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040077bd31f28828f14f841ebecdfe0dd0c1dbccef3f81dd70527bf953957b4ba91abc34f556feaf4a2b46b748dc989928e1de314010b81e312455f282bd86dd545f2200c6924b844e4c1a7e5f410831d09b006253b2395d78aa314cfb2bff1a225cabdfe77359401020102"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 22,
+     "comment": "offer: GREASE type 3,000,000,001",
+     "flags": [
+      "Grease"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "offer",
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0407c82e7c5a83b1cc353baaaa623e3326e0b6c371308b3e8b73e6a6b0f8f4007af9752f1f8717628e4341fd7ca7afa7cd3ef55b5dd2823b2482145f6f3067dec2af220579283916df40beb028c1d8fb8173d29700633e0f5850de5b1a283552a5d2047feb2d05e01020102"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 23,
+     "comment": "offer: GREASE type 3,000,000,999",
+     "flags": [
+      "Grease"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "offer",
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040d85998333eaca8348494b84cef2ba2637fd92edcb4e32494f6d9ada1f989d10856aed75f651e66f6b33ffe33f36ac9dd50e9c6b5003da9850a5b11577b2814f6f220d982a92695612d7aa2326589aabfaa15c98e08816917963418af3f8b712479e2feb2d061e7020102"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 24,
+     "comment": "offer: even type inside the GREASE range is not GREASE",
+     "flags": [
+      "UnknownEven"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "offer",
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0408b36e90a6f56d4c1e311f432393d6dde0077fd5cf1816ada39d0603acfcf28973b4502c4a4fed71990ec194a733003beb369d539696c7f6e2131243c61742ee9f2208e9ad7cbb525667b6b0b52a37f15f9556bef2346319803521d0829147a9c13b9feb2d05e02020102"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 25,
+     "comment": "credential: odd type 13",
+     "flags": [
+      "UnknownOdd"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "credential",
+      "hex": "00010102e8000101022002be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b37170a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100000000000000000000000000000000012232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040dfce109de606bd4bc597d3c88ef1b6dbe27176565d43e4dc2085e7b454f9ba83c63dac273f1097d26fc2744524eadc231f449a6a72230bd7a64d778edaa31e13f220f712cf076123b3454eacb75b140ed905a80601964b81d0d8102895e5c1f737df042000187061796d656e743a6c696768746e696e672f6368617267650204626f64790d0100"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 26,
+     "comment": "credential: even type 14",
+     "flags": [
+      "UnknownEven"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "credential",
+      "hex": "00010102e8000101022002be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b37170a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100000000000000000000000000000000012232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040dfce109de606bd4bc597d3c88ef1b6dbe27176565d43e4dc2085e7b454f9ba83c63dac273f1097d26fc2744524eadc231f449a6a72230bd7a64d778edaa31e13f220f712cf076123b3454eacb75b140ed905a80601964b81d0d8102895e5c1f737df042000187061796d656e743a6c696768746e696e672f6368617267650204626f64790e0100"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 27,
+     "comment": "credential: GREASE",
+     "flags": [
+      "Grease"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "credential",
+      "hex": "00010102e8000101022002be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b37170a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100000000000000000000000000000000012232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040dfce109de606bd4bc597d3c88ef1b6dbe27176565d43e4dc2085e7b454f9ba83c63dac273f1097d26fc2744524eadc231f449a6a72230bd7a64d778edaa31e13f220f712cf076123b3454eacb75b140ed905a80601964b81d0d8102895e5c1f737df042000187061796d656e743a6c696768746e696e672f6368617267650204626f6479feb2d05e030100"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 28,
+     "comment": "response: odd type 21, covered by the ack",
+     "flags": [
+      "UnknownOdd"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "response",
+      "hex": "000101020006000a2000000000000000000000000000000000000000000000000000000000000000000c20000000000000000000000000000000000000000000000000000000000000000012205f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db14046acb2c84150105f040ca75faee9b7c6f259e3c91357fd0c14e5a61aff355318ee51c44870c21cee9cfef13976fcd1f013c6cf09a1256457085b06bcd534d6924dc174400f3e00c66f4"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 29,
+     "comment": "response: even type 22",
+     "flags": [
+      "UnknownEven"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "response",
+      "hex": "000101020006000a2000000000000000000000000000000000000000000000000000000000000000000c20000000000000000000000000000000000000000000000000000000000000000012205f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db14046acb2c84160105f0409d448c16f49fbfcf626bf9a669dc27bcd66651a6f2251325b8570d80a48856cf2a93cfb1de4c648952110f8acccd10c78d6c0e15bcc7efaf88c9cb46e82d8d25"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 30,
+     "comment": "error: odd type 9",
+     "flags": [
+      "UnknownOdd"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "error",
+      "hex": "000101020105090101"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 31,
+     "comment": "error: even type 10",
+     "flags": [
+      "UnknownEven"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "object": "error",
+      "hex": "0001010201050a0101"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    }
+   ]
+  },
+  {
+   "type": "NestedEvenOdd",
+   "section": "2",
+   "description": "An offer whose single pay entry carries one extra nested record.",
+   "tests": [
+    {
+     "tcId": 32,
+     "comment": "odd nested type 11",
+     "flags": [
+      "UnknownOdd"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712262500187061796d656e743a6c696768746e696e672f63686172676502011504037361740b0101f040fe0176729d60b2e3853e0c900031023b3002bc14c5b6b39fd7dd09160bc03ce57022e07c423741bca97484ae16ad0ac24de3b6ae7932e0ebdeefdfabb79fb973f2209ea3e17ed12eee45913931bafb78feb8db85616a2d77c9064c8b3deee3966596"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 33,
+     "comment": "even nested type 12",
+     "flags": [
+      "UnknownEven"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712262500187061796d656e743a6c696768746e696e672f63686172676502011504037361740c0101f04032ff43cc58844291ae1a9251530f4a0d024316d440b9ef2f525bd7e6633bdbbf824c47b8ede0fac27e5093285060fd2177801d06b95bb11603709385cc70137df220b714ca8d7d1f6b8b9e8a8f9f621a27481a2a9ac58e8eb683f7110ea3b17af877"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 34,
+     "comment": "odd experimental nested type",
+     "flags": [
+      "UnknownOdd"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9101007070707070707070707070707070707122a2900187061796d656e743a6c696768746e696e672f6368617267650201150403736174fe3b9aca010101f040b231ee03f30656b00e7946ce06afe6ac41d58ff38610a0fda18a510555928e962cc24165a15d3164671246cdb1849650532804be6807b8c8b40ff82c8bd8779bf220e5b1381cb55182e8c691d0f78a40aeb1f82589013abb7b4ed7d380bb095c8014"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 35,
+     "comment": "GREASE nested type",
+     "flags": [
+      "Grease"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9101007070707070707070707070707070707122a2900187061796d656e743a6c696768746e696e672f6368617267650201150403736174feb2d05e050101f040245d3715be4c19c92deda568cf15ecc297abfa556596fd52d8170aaa68edb6c853c8c0a787497ed12f5e300c5d3a3082946f7b827680d33a2ea48e81ce17296bf2207cb4332c45088e38d41e208c5aea682b747b211aed059d2943ddf7184d781422"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 36,
+     "comment": "odd nested type 241, outside the nested ranges",
+     "flags": [
+      "NestedRange"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712262500187061796d656e743a6c696768746e696e672f6368617267650201150403736174f10101f040c27e98acdff5c0c4e5a55e445138dda3e98cc56ee611a203fbf425c8d5bba3a90a74dad024ce919e36edecbc2d02a9a2211a807217e67a132c99653b4ae3a9c0f220c21648b1b1686800c318f68287dde466423f394086a60412089a192442e9d9ec"
+     },
+     "result": "acceptable",
+     "acceptableErrors": [
+      "MALFORMED"
+     ]
+    },
+    {
+     "tcId": 37,
+     "comment": "odd nested type 1001, outside the nested ranges",
+     "flags": [
+      "NestedRange"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712282700187061796d656e743a6c696768746e696e672f6368617267650201150403736174fd03e90101f040127055b6b58fb80263f9576cfff7e63603a13004dc23041180ad455a01a56328d43544d76675c6f9e1873bd7735f61eef10cb8d8fcf852b9449fff1fc1d78ad2f22078c843d32f7b6adef0e05909e1e34540506cf72250a33824a2900ecb16743cc5"
+     },
+     "result": "acceptable",
+     "acceptableErrors": [
+      "MALFORMED"
+     ]
+    },
+    {
+     "tcId": 38,
+     "comment": "even nested type 240",
+     "flags": [
+      "UnknownEven"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712262500187061796d656e743a6c696768746e696e672f6368617267650201150403736174f00101f040718f4247748f8c500da535c4c6343302fe2bd15bfa37c53ad29fb735e4881f26baf8cf4cb60d43492aa869d06848ad092eb5f2e46098a46a92499ae0ee0f0642f220b830999b3247795ff0f041507f98537b93445a171aaa0f5f36bebb3d0d0022d8"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    }
+   ]
+  },
+  {
+   "type": "EntryList",
+   "section": "2",
+   "description": "Parse an entry list: lp(stream) repeated.",
+   "tests": [
+    {
+     "tcId": 39,
+     "comment": "two entries",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "0300016106000162020163"
+     },
+     "result": "valid",
+     "expected": {
+      "entries": [
+       "000161",
+       "000162020163"
+      ]
+     }
+    },
+    {
+     "tcId": 40,
+     "comment": "empty list",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": ""
+     },
+     "result": "valid",
+     "expected": {
+      "entries": []
+     }
+    },
+    {
+     "tcId": 41,
+     "comment": "last entry truncated",
+     "flags": [
+      "Truncated"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "03000161060001620201"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 42,
+     "comment": "length prefix past the end",
+     "flags": [
+      "Truncated"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "05000161"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    }
+   ]
+  },
+  {
+   "type": "Base64url",
+   "section": "10.2",
+   "description": "Decode a header value: base64url without padding (RFC 4648 section 5).",
+   "tests": [
+    {
+     "tcId": 43,
+     "comment": "0 bytes",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.2"
+     ],
+     "inputs": {
+      "text": ""
+     },
+     "result": "valid",
+     "expected": {
+      "hex": ""
+     }
+    },
+    {
+     "tcId": 44,
+     "comment": "1 bytes",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.2"
+     ],
+     "inputs": {
+      "text": "AA"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "00"
+     }
+    },
+    {
+     "tcId": 45,
+     "comment": "2 bytes",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.2"
+     ],
+     "inputs": {
+      "text": "AAE"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "0001"
+     }
+    },
+    {
+     "tcId": 46,
+     "comment": "2 bytes",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.2"
+     ],
+     "inputs": {
+      "text": "-_8"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "fbff"
+     }
+    },
+    {
+     "tcId": 47,
+     "comment": "10 bytes",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.2"
+     ],
+     "inputs": {
+      "text": "AAECAwQFBgcICQ"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "00010203040506070809"
+     }
+    },
+    {
+     "tcId": 48,
+     "comment": "draft-00 10.3 REQUIRED error",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.2"
+     ],
+     "inputs": {
+      "text": "AAEBAgEQ"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "000101020110"
+     }
+    },
+    {
+     "tcId": 49,
+     "comment": "padding",
+     "flags": [
+      "Base64"
+     ],
+     "sections": [
+      "10.2"
+     ],
+     "inputs": {
+      "text": "AA=="
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 50,
+     "comment": "standard alphabet",
+     "flags": [
+      "Base64"
+     ],
+     "sections": [
+      "10.2"
+     ],
+     "inputs": {
+      "text": "+/8"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 51,
+     "comment": "non-zero trailing bits",
+     "flags": [
+      "Base64"
+     ],
+     "sections": [
+      "10.2"
+     ],
+     "inputs": {
+      "text": "AB"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 52,
+     "comment": "one character",
+     "flags": [
+      "Base64"
+     ],
+     "sections": [
+      "10.2"
+     ],
+     "inputs": {
+      "text": "A"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 53,
+     "comment": "embedded space",
+     "flags": [
+      "Base64"
+     ],
+     "sections": [
+      "10.2"
+     ],
+     "inputs": {
+      "text": "AA AA"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    }
+   ]
+  }
+ ]
+}

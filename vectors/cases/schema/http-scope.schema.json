@@ -1,0 +1,438 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/bnap-protocol/bnap/vectors/cases/schema/http-scope.schema.json",
+ "title": "BNAP conformance cases: HTTP scopes and route matching",
+ "type": "object",
+ "required": [
+  "bnapCases",
+  "area",
+  "title",
+  "schema",
+  "generator",
+  "source",
+  "numberOfTests",
+  "header",
+  "notes",
+  "testGroups"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "bnapCases": {
+   "const": 1
+  },
+  "area": {
+   "const": "http-scope"
+  },
+  "title": {
+   "type": "string"
+  },
+  "schema": {
+   "const": "schema/http-scope.schema.json"
+  },
+  "generator": {
+   "type": "string"
+  },
+  "source": {
+   "type": "string"
+  },
+  "numberOfTests": {
+   "type": "integer"
+  },
+  "header": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "notes": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "object",
+    "required": [
+     "bugType",
+     "description"
+    ],
+    "additionalProperties": false,
+    "properties": {
+     "bugType": {
+      "type": "string"
+     },
+     "description": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "testGroups": {
+   "type": "array",
+   "items": {
+    "allOf": [
+     {
+      "type": "object",
+      "required": [
+       "type",
+       "section",
+       "description",
+       "tests"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "type": {
+        "enum": [
+         "ActionScope",
+         "RouteScope",
+         "RouteMatch",
+         "ManifestOrigin"
+        ]
+       },
+       "section": {
+        "type": "string"
+       },
+       "description": {
+        "type": "string"
+       },
+       "tests": {
+        "type": "array"
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "ActionScope"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "method",
+               "origin",
+               "request_target",
+               "content",
+               "listed",
+               "request_headers"
+              ],
+              "properties": {
+               "method": {
+                "type": "string"
+               },
+               "origin": {
+                "type": "string"
+               },
+               "request_target": {
+                "type": "string"
+               },
+               "content": {
+                "anyOf": [
+                 {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{2})*$"
+                 },
+                 {
+                  "type": "null"
+                 }
+                ]
+               },
+               "listed": {
+                "type": "array"
+               },
+               "request_headers": {
+                "type": "array"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "RouteScope"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "origin",
+               "route_id"
+              ],
+              "properties": {
+               "origin": {
+                "type": "string"
+               },
+               "route_id": {
+                "type": "string"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "RouteMatch"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "match",
+               "method",
+               "request_target"
+              ],
+              "properties": {
+               "match": {
+                "type": "string"
+               },
+               "method": {
+                "type": "string"
+               },
+               "request_target": {
+                "type": "string"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "ManifestOrigin"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "manifest_origin",
+               "seen_authority",
+               "method",
+               "request_target"
+              ],
+              "properties": {
+               "manifest_origin": {
+                "type": "string"
+               },
+               "seen_authority": {
+                "type": "string"
+               },
+               "method": {
+                "type": "string"
+               },
+               "request_target": {
+                "type": "string"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ "$defs": {
+  "test": {
+   "type": "object",
+   "required": [
+    "tcId",
+    "comment",
+    "flags",
+    "sections",
+    "inputs",
+    "result"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "tcId": {
+     "type": "integer"
+    },
+    "comment": {
+     "type": "string",
+     "minLength": 1
+    },
+    "flags": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "sections": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "string"
+     }
+    },
+    "inputs": {
+     "type": "object"
+    },
+    "result": {
+     "enum": [
+      "valid",
+      "invalid",
+      "acceptable"
+     ]
+    },
+    "error": {
+     "enum": [
+      "VERSION",
+      "MALFORMED",
+      "TOO_LARGE",
+      "BAD_OFFER",
+      "STALE",
+      "WRONG_SCOPE",
+      "NOT_OFFERED",
+      "POLICY",
+      "UNDERPAID",
+      "BAD_CREDENTIAL",
+      "BINDING",
+      "SPENT",
+      "PENDING",
+      "RATE_LIMITED",
+      "UNAVAILABLE",
+      "REQUIRED",
+      "CLIENT_REJECT",
+      "MANIFEST_REJECT"
+     ]
+    },
+    "errorCode": {
+     "type": "integer"
+    },
+    "acceptableErrors": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "VERSION",
+       "MALFORMED",
+       "TOO_LARGE",
+       "BAD_OFFER",
+       "STALE",
+       "WRONG_SCOPE",
+       "NOT_OFFERED",
+       "POLICY",
+       "UNDERPAID",
+       "BAD_CREDENTIAL",
+       "BINDING",
+       "SPENT",
+       "PENDING",
+       "RATE_LIMITED",
+       "UNAVAILABLE",
+       "REQUIRED"
+      ]
+     }
+    },
+    "reason": {
+     "type": "string"
+    },
+    "expected": {
+     "type": "object"
+    }
+   },
+   "if": {
+    "properties": {
+     "result": {
+      "const": "invalid"
+     }
+    },
+    "required": [
+     "result"
+    ]
+   },
+   "then": {
+    "required": [
+     "error"
+    ]
+   }
+  }
+ }
+}

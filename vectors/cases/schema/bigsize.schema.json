@@ -1,0 +1,388 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://github.com/bnap-protocol/bnap/vectors/cases/schema/bigsize.schema.json",
+ "title": "BNAP conformance cases: BigSize and tu64",
+ "type": "object",
+ "required": [
+  "bnapCases",
+  "area",
+  "title",
+  "schema",
+  "generator",
+  "source",
+  "numberOfTests",
+  "header",
+  "notes",
+  "testGroups"
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "bnapCases": {
+   "const": 1
+  },
+  "area": {
+   "const": "bigsize"
+  },
+  "title": {
+   "type": "string"
+  },
+  "schema": {
+   "const": "schema/bigsize.schema.json"
+  },
+  "generator": {
+   "type": "string"
+  },
+  "source": {
+   "type": "string"
+  },
+  "numberOfTests": {
+   "type": "integer"
+  },
+  "header": {
+   "type": "array",
+   "items": {
+    "type": "string"
+   }
+  },
+  "notes": {
+   "type": "object",
+   "additionalProperties": {
+    "type": "object",
+    "required": [
+     "bugType",
+     "description"
+    ],
+    "additionalProperties": false,
+    "properties": {
+     "bugType": {
+      "type": "string"
+     },
+     "description": {
+      "type": "string"
+     }
+    }
+   }
+  },
+  "testGroups": {
+   "type": "array",
+   "items": {
+    "allOf": [
+     {
+      "type": "object",
+      "required": [
+       "type",
+       "section",
+       "description",
+       "tests"
+      ],
+      "additionalProperties": false,
+      "properties": {
+       "type": {
+        "enum": [
+         "BigSizeDecode",
+         "BigSizeEncode",
+         "Tu64Decode",
+         "Tu64Encode"
+        ]
+       },
+       "section": {
+        "type": "string"
+       },
+       "description": {
+        "type": "string"
+       },
+       "tests": {
+        "type": "array"
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "BigSizeDecode"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "hex"
+              ],
+              "properties": {
+               "hex": {
+                "type": "string",
+                "pattern": "^([0-9a-f]{2})*$"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "BigSizeEncode"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "value"
+              ],
+              "properties": {
+               "value": {
+                "type": "string"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "Tu64Decode"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "hex"
+              ],
+              "properties": {
+               "hex": {
+                "type": "string",
+                "pattern": "^([0-9a-f]{2})*$"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     },
+     {
+      "if": {
+       "properties": {
+        "type": {
+         "const": "Tu64Encode"
+        }
+       },
+       "required": [
+        "type"
+       ]
+      },
+      "then": {
+       "properties": {
+        "tests": {
+         "type": "array",
+         "items": {
+          "allOf": [
+           {
+            "$ref": "#/$defs/test"
+           },
+           {
+            "properties": {
+             "inputs": {
+              "type": "object",
+              "required": [
+               "value"
+              ],
+              "properties": {
+               "value": {
+                "type": "string"
+               }
+              },
+              "additionalProperties": false
+             }
+            }
+           }
+          ]
+         }
+        }
+       }
+      }
+     }
+    ]
+   }
+  }
+ },
+ "$defs": {
+  "test": {
+   "type": "object",
+   "required": [
+    "tcId",
+    "comment",
+    "flags",
+    "sections",
+    "inputs",
+    "result"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "tcId": {
+     "type": "integer"
+    },
+    "comment": {
+     "type": "string",
+     "minLength": 1
+    },
+    "flags": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "sections": {
+     "type": "array",
+     "minItems": 1,
+     "items": {
+      "type": "string"
+     }
+    },
+    "inputs": {
+     "type": "object"
+    },
+    "result": {
+     "enum": [
+      "valid",
+      "invalid",
+      "acceptable"
+     ]
+    },
+    "error": {
+     "enum": [
+      "VERSION",
+      "MALFORMED",
+      "TOO_LARGE",
+      "BAD_OFFER",
+      "STALE",
+      "WRONG_SCOPE",
+      "NOT_OFFERED",
+      "POLICY",
+      "UNDERPAID",
+      "BAD_CREDENTIAL",
+      "BINDING",
+      "SPENT",
+      "PENDING",
+      "RATE_LIMITED",
+      "UNAVAILABLE",
+      "REQUIRED",
+      "CLIENT_REJECT",
+      "MANIFEST_REJECT"
+     ]
+    },
+    "errorCode": {
+     "type": "integer"
+    },
+    "acceptableErrors": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "VERSION",
+       "MALFORMED",
+       "TOO_LARGE",
+       "BAD_OFFER",
+       "STALE",
+       "WRONG_SCOPE",
+       "NOT_OFFERED",
+       "POLICY",
+       "UNDERPAID",
+       "BAD_CREDENTIAL",
+       "BINDING",
+       "SPENT",
+       "PENDING",
+       "RATE_LIMITED",
+       "UNAVAILABLE",
+       "REQUIRED"
+      ]
+     }
+    },
+    "reason": {
+     "type": "string"
+    },
+    "expected": {
+     "type": "object"
+    }
+   },
+   "if": {
+    "properties": {
+     "result": {
+      "const": "invalid"
+     }
+    },
+    "required": [
+     "result"
+    ]
+   },
+   "then": {
+    "required": [
+     "error"
+    ]
+   }
+  }
+ }
+}
