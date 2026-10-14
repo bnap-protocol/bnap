@@ -44,6 +44,7 @@ Standard library only, Python 3.11 or later. Run with python3 -I.
 import argparse
 import hashlib
 import html
+import ipaddress
 import json
 import os
 import pathlib
@@ -976,6 +977,40 @@ def err_too_large(ctx):
     expect_error(ex, "TOO_LARGE")
 
 
+def pad_offer(raw, size):
+    """raw with one experimental odd record added so that it is exactly size bytes. The signatures no
+    longer verify, which does not matter: 4.4 checks the size first."""
+    recs = [(r.type, r.value) for r in codec.parse_stream(raw)]
+    t = codec.EXPERIMENTAL[0] + 1
+    while any(x == t for x, _ in recs):
+        t += 2
+    n = size - len(raw) - len(codec.bigsize(t)) - 1
+    while n > 0 and len(raw) + len(codec.bigsize(t)) + len(codec.bigsize(n)) + n > size:
+        n -= 1
+    out = codec.tlv(sorted(recs + [(t, bytes(n))])) if n >= 0 else b""
+    if len(out) != size:
+        raise Skip(f"cannot pad a {len(raw)}-byte offer to exactly {size} bytes")
+    return out
+
+
+@case("ERR-OFFER-TOO-LARGE", "4.4", "MUST", "an inline offer over max_offer, in a credential under the size "
+      "limit, is TOO_LARGE before any other offer check", profiles=WITH_CREDENTIALS)
+def err_offer_too_large(ctx):
+    p, raw, o = probe_offer(ctx)
+    lim = ctx.limits()
+    big = pad_offer(raw, lim["max_offer"] + 1)
+    cred = scheme_cred(big, o)
+    cap = min(lim["max_credential"], cr.HTTP_MAX_CREDENTIAL)
+    if len(cred) >= cap:
+        raise Skip(f"an offer of max_offer + 1 = {len(big)} bytes does not fit a credential under {cap} bytes")
+    ex = ctx.request(p.req, credential=cred, label=f"inline offer of {len(big)} bytes")
+    try:
+        expect_error(ex, "TOO_LARGE")
+    except Fail as e:
+        raise Fail(f"{e}; a {len(cred)}-byte credential carried a {len(big)}-byte offer, one byte over "
+                   f"max_offer {lim['max_offer']}") from None
+
+
 @case("ERR-FIELD-MIN", "10.2", "MUST", "the gate reads a BNAP-Credential field of 12,288 bytes",
       profiles=WITH_CREDENTIALS)
 def err_field_min(ctx):
@@ -1016,6 +1051,59 @@ def err_unknown_even(ctx):
     p, raw, o = probe_offer(ctx)
     ex = ctx.request(p.req, credential=scheme_cred(raw, o, extra=[(14, b"\x00")], offer_id=True), label="type 14")
     expect_error(ex, "MALFORMED")
+
+
+def item_with(item, extra):
+    """A scheme item's bytes with extra (type, value) records added, in type order."""
+    raw = item.encode() if isinstance(item, cr.SchemeItem) else item
+    return codec.tlv(sorted([(r.type, r.value) for r in codec.parse_stream(raw)] + list(extra)))
+
+
+def item_probe(ctx, ext=None):
+    """(probe, raw offer, offer, attest item, pay scheme). Where an offer has a DPoP waive the item is a
+    valid proof (with ext in its Context), so a gate that skips a parse rule shows an admission. Otherwise
+    a dummy item, which such a gate refuses with another code than MALFORMED."""
+    hit = ctx.find(lambda o: dpop_waive(o) and not o.route_scope) or ctx.find(dpop_waive)
+    if hit is not None:
+        p, raw, o = hit
+        cred, _, _ = ctx.dpop_credential(p.req, raw, o, ext=ext)
+        # Read the item from the records: the runner's own parser refuses an even extension in ext.
+        item = codec.parse_entry_list(codec.as_dict(codec.parse_stream(cred))[6])[0]
+    else:
+        p, raw, o = probe_offer(ctx)
+        item = cr.SchemeItem(o.attest[0].scheme if o.attest else DPOP, b"x", None).encode()
+    return p, raw, o, item, (o.pay[0].scheme if o.pay else "httpauth:L402")
+
+
+@case("ERR-NESTED-EVEN", "2", "MUST", "an unknown even record inside an attest item or a pay item is MALFORMED",
+      profiles=WITH_CREDENTIALS)
+def err_nested_even(ctx):
+    p, raw, o, item, pay_scheme = item_probe(ctx)
+    att = cr.build_credential(offer=raw, attest=[item_with(item, [(6, b"\x00")])])
+    ex = ctx.request(p.req, credential=att, label="even type 6 in the attest item")
+    try:
+        expect_error(ex, "MALFORMED")
+    except Fail as e:
+        raise Fail(f"attest item: {e}; an unknown even record inside a scheme item was not refused") from None
+    pay = item_with(cr.SchemeItem(pay_scheme, b"conformance garbage", None), [(6, b"\x00")])
+    ex = ctx.request(p.req, credential=cr.build_credential(offer=raw, pay=pay), label="even type 6 in the pay item")
+    try:
+        expect_error(ex, "MALFORMED")
+    except Fail as e:
+        raise Fail(f"pay item: {e}; an unknown even record inside a scheme item was not refused") from None
+
+
+@case("ERR-EXT-EVEN", "5.1", "MUST", "an even-typed extension in ext is MALFORMED", profiles=WITH_CREDENTIALS)
+def err_ext_even(ctx):
+    ext = codec.tlv([(2, b"x")])
+    p, raw, o, item, _ = item_probe(ctx, ext=ext)
+    cred = cr.build_credential(offer=raw, attest=[item], ext=ext)
+    ex = ctx.request(p.req, credential=cred, label="even extension 2 in ext")
+    try:
+        expect_error(ex, "MALFORMED")
+    except Fail as e:
+        raise Fail(f"{e}; an unknown even extension inside ext was not refused, so the gate does not parse ext") \
+            from None
 
 
 @case("ERR-VERSION", "8.2", "MUST", "version 2 is VERSION, HTTP 400", profiles=WITH_CREDENTIALS)
@@ -1331,6 +1419,25 @@ def att_unknown_odd(ctx):
     check(r2.replayed, "dropping unknown odd records changed the ReplayKey")
 
 
+@case("ATT-NESTED-ODD", "2", "MUST", "an unknown odd record inside an attest item is ignored and stays out of "
+      "the Digest and the ReplayKey", profiles=WITH_CREDENTIALS)
+def att_nested_odd(ctx):
+    p, raw, o = admitted_dpop(ctx)
+    cred, c, dg = ctx.dpop_credential(p.req, raw, o)
+    item = cr.parse_credential(cred).attest[0]
+    odd = cr.build_credential(offer=raw, attest=[item_with(item, [(5, b"\x01")])])
+    try:
+        r1 = expect_admitted(ctx.request(p.req, credential=odd, label="odd type 5 in the attest item"))
+    except Fail as e:
+        raise Fail(f"{e}; an unknown odd record inside a scheme item must be ignored") from None
+    check(r1.status == rs.OK and not r1.replayed, f"first send settled {r1.status_name}, replayed={r1.replayed}")
+    check(r1.digest == dg, "the receipt digest is not the Digest without the odd item record: it entered processing")
+    r2 = expect_admitted(ctx.request(p.req, credential=cred, label="the same credential without it"))
+    check(r2.replayed and r2.settled_at == r1.settled_at,
+          "dropping the odd item record changed the ReplayKey, so a party on the path can turn a retry into a "
+          "second run")
+
+
 @case("ATT-EMPTY-FORMS", "2", "MUST", "an empty ext record means the same as no ext record",
       profiles=WITH_CREDENTIALS)
 def att_empty_forms(ctx):
@@ -1401,6 +1508,54 @@ def scope_body_hash(ctx):
     ex = ctx.request(req, credential=cred, extra=[("Content-Digest", "sha-256=:" + b64u(bytes(32)) + "=:")],
                      label="wrong Content-Digest")
     expect_admitted(ex)
+
+
+def host_variant(base):
+    """(Host value, how) that reaches the same server as base but spells its authority differently, or
+    (None, why not). A host name goes upper case, a loopback address becomes localhost, an address on the
+    default port gets the port written out."""
+    u = urllib.parse.urlsplit(base)
+    host, port = u.hostname, u.port
+    tail = f":{port}" if port else ""
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    if ip is None and any(ch.isalpha() for ch in host):
+        return host.upper() + tail, "the host name in upper case"
+    if ip is not None and ip.is_loopback:
+        return "localhost" + tail, "localhost for a loopback address"
+    if port is None:
+        lit = f"[{host}]" if ip is not None and ip.version == 6 else host
+        return f"{lit}:{443 if u.scheme == 'https' else 80}", "the default port written out"
+    return None, "a non-loopback address on an explicit port has no other spelling"
+
+
+@case("SCOPE-MANIFEST-ORIGIN", "10.1", "MUST", "scope and proof inputs come from the manifest origin, not the Host "
+      "field: a credential sent with another spelling of the authority is admitted under the runner's Digest",
+      profiles=WITH_CREDENTIALS)
+def scope_manifest_origin(ctx):
+    host, how = host_variant(ctx.base)
+    if host is None:
+        raise Skip(how)
+    p, raw, o = admitted_dpop(ctx)
+    hdr = [("Host", host)]
+    ex0 = ctx.request(p.req, extra=hdr, label=f"no credential, Host: {host}")
+    offers = [(r, x) for r, x in Probe(p.route, p.req, ex0).offers]
+    if ex0.res is None or ex0.res.status != 402 or not offers:
+        raise Skip(f"the target does not answer Host: {host} ({how}) with a BNAP 402: {ex0.describe()}")
+    for _, x in offers:
+        want = hp.route_scope(ctx.origin, p.route.id) if x.route_scope else p.req.action_scope()
+        check(x.scope == want, f"the offer minted for Host: {host} names a scope that is not built from the "
+                               f"manifest origin {ctx.origin}")
+    cred, c, dg = ctx.dpop_credential(p.req, raw, o)
+    try:
+        r = expect_admitted(ctx.request(p.req, credential=cred, extra=hdr, label=f"credential, Host: {host}"))
+    except Fail as e:
+        raise Fail(f"{e}; with Host: {host} ({how}) the gate built the action scope or the proof's htu from the "
+                   f"Host field instead of the manifest origin {ctx.origin}") from None
+    check(r.status == rs.OK and not r.replayed, f"settled {r.status_name}, replayed={r.replayed}")
+    check(r.digest == dg, f"with Host: {host} the receipt digest is not the Digest over the manifest origin's scope")
 
 
 @case("ATT-CONTEXT-BOUND", "5.1", "MUST", "an attestation whose proof does not carry the Context does not count",

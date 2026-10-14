@@ -244,9 +244,10 @@ def http_request(base_url, method, request_target, body=None, headers=(), timeou
     else:
         raise HttpTransportError("unsupported scheme " + u.scheme)
     t0 = time.monotonic()
+    sent = {k.lower() for k, _ in headers}
     try:
-        conn.putrequest(method, request_target, skip_accept_encoding=True)
-        sent = {k.lower() for k, _ in headers}
+        # A Host field among headers replaces the one http.client would add; TLS SNI still names base_url.
+        conn.putrequest(method, request_target, skip_host="host" in sent, skip_accept_encoding=True)
         for k, v in headers:
             conn.putheader(k, v)
         if body is not None and "content-length" not in sent:

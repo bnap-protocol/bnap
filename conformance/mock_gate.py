@@ -32,6 +32,13 @@ Faults:
                         is raised only afterwards (4.4 order broken)
   nonce-reuse           one fixed nonce per route, with a new invoice on every 402
   no-receipt-on-failed  responses to FAILED outcomes carry no BNAP-Receipt
+  nested-odd-rejected   a scheme item with an unknown odd record is MALFORMED
+  nested-odd-in-rk      unknown odd records inside scheme items enter the ReplayKey
+  nested-even-ignored   unknown even records inside scheme items are dropped, not refused
+  ext-even-ignored      the gate does not parse ext, so an even extension passes
+  offer-size-unchecked  an inline offer is not checked against max_offer
+  htu-from-host         the DPoP adapter builds htu from the raw Host field
+  scope-from-host       the action scope is built from the Host field, not the manifest origin
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -61,7 +68,8 @@ from bnap_conf.crypto import schnorr_pub, key_from_label  # noqa: E402
 
 FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "bad-ack", "no-dpop",
           "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window", "late-expiry",
-          "nonce-reuse", "no-receipt-on-failed")
+          "nonce-reuse", "no-receipt-on-failed", "nested-odd-rejected", "nested-odd-in-rk", "nested-even-ignored",
+          "ext-even-ignored", "offer-size-unchecked", "htu-from-host", "scope-from-host")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -303,7 +311,8 @@ class MockGate:
             return Reply(404, [("Content-Type", "text/plain")], b"not found")
         now = int(time.time())
         listed = hp.listed_headers(route.get("headers", []), headers)
-        scope = hp.action_scope(method, self.origin, target, body or None, listed)
+        origin = self._host_origin(headers) if "scope-from-host" in self.faults else self.origin
+        scope = hp.action_scope(method, origin, target, body or None, listed)
         has_cred = any(k.lower() == "bnap-credential" for k, _ in headers)
         try:
             reply = self._process(route, method, target, headers, body, scope, now)
@@ -312,6 +321,25 @@ class MockGate:
         if has_cred and not any(k.lower() == "cache-control" for k, _ in reply.headers):
             reply.headers.append(("Cache-Control", "private, no-store"))
         return reply
+
+    def _host_origin(self, headers):
+        """For the *-from-host faults: an origin made from the raw Host field."""
+        host = next((v for k, v in headers if k.lower() == "host"), None)
+        return "http://" + host.strip() if host else self.origin
+
+    def _parse_credential(self, raw):
+        """parse_credential, with the parse faults applied."""
+        if "nested-even-ignored" in self.faults:
+            raw = _drop_item_even(raw)
+        ext = None
+        if "ext-even-ignored" in self.faults:
+            raw, ext = _blank_ext(raw)
+        c = cr.parse_credential(raw, HTTP_CAP, REG)
+        if ext is not None:
+            c.ext = ext
+        if "nested-odd-rejected" in self.faults and any(i.ignored for i in ([c.pay] if c.pay else []) + c.attest):
+            raise BnapError("MALFORMED", "unknown odd record in a scheme item")
+        return c
 
     def _error(self, e, route, scope, listed, now):
         hdrs = [("BNAP-Error", b64u(codec.build_error(e.code, e.scheme_code, e.detail or None, e.retry_after)))]
@@ -369,12 +397,13 @@ class MockGate:
         if len(raw) > HTTP_CAP:
             raise GateError("TOO_LARGE", "credential over the HTTP cap")
         try:
-            c = cr.parse_credential(raw, HTTP_CAP, REG)
+            c = self._parse_credential(raw)
         except BnapError as e:
             raise GateError(e.code, e.reason) from None
         if c.pay is not None and natives:
             raise GateError("MALFORMED", "more than one value credential")
-        state = of.GateOfferState([self.mac_key], [schnorr_pub(self.offer_sk)], self.cache)
+        state = of.GateOfferState([self.mac_key], [schnorr_pub(self.offer_sk)], self.cache,
+                                  **({"max_offer": 1 << 20} if "offer-size-unchecked" in self.faults else {}))
         act = scope
         if "wrong-scope-accepted" in self.faults and c.offer is not None:
             try:
@@ -405,7 +434,7 @@ class MockGate:
                 raise GateError("MALFORMED", "BNAP-Context differs")
         if c.binding is not None:
             raise GateError("BINDING", "this gate cannot see the client's TLS session")
-        htu = self.origin + target.split("?", 1)[0]
+        htu = (self._host_origin(headers) if "htu-from-host" in self.faults else self.origin) + target.split("?", 1)[0]
         value, ids, singles = 0, [], []
         if c.pay is not None:
             value, uid, rail = self._verify_pay(c.pay, o)
@@ -439,7 +468,10 @@ class MockGate:
             counters.append(attests[adm.quota_index]["_key"])
         if not singles and not o.expires + 60 <= now + self.replay_window and "reusable-window" not in self.faults:
             raise GateError("POLICY", "offer outlives the outcome record")
-        rk = cr.replay_key(ctx, c.pay_body, c.attest_bodies, ids)
+        rk_ids = ids
+        if "nested-odd-in-rk" in self.faults and _item_odd_records(c):
+            rk_ids = ids + [codec.H(_item_odd_records(c))]
+        rk = cr.replay_key(ctx, c.pay_body, c.attest_bodies, rk_ids)
         return self._commit_and_run(route, target, headers, body, o, rk, dg, singles, counters, attests, adm,
                                     entry, now)
 
@@ -588,6 +620,47 @@ class MockGate:
         return 200, js, json.dumps({"ok": True, "route": rid, "run": n}).encode(), None
 
 
+def _strip_item_even(item):
+    return codec.tlv_unsorted([(r.type, r.value) for r in codec.parse_stream(item)
+                               if r.type in cr.ITEM_TYPES or r.type % 2])
+
+
+def _drop_item_even(raw):
+    """For nested-even-ignored: the credential with unknown even records removed from its scheme items."""
+    try:
+        out = []
+        for r in codec.parse_stream(raw):
+            v = r.value
+            if r.type == 4:
+                v = _strip_item_even(v)
+            elif r.type == 6:
+                v = codec.entry_list([_strip_item_even(e) for e in codec.parse_entry_list(v)])
+            out.append((r.type, v))
+        return codec.tlv_unsorted(out)
+    except BnapError:
+        return raw
+
+
+def _blank_ext(raw):
+    """For ext-even-ignored: (the credential with an empty ext, the original ext value), so ext is never parsed."""
+    try:
+        recs = codec.parse_stream(raw)
+    except BnapError:
+        return raw, None
+    ext = next((r.value for r in recs if r.type == 10), None)
+    if ext is None:
+        return raw, None
+    return codec.tlv_unsorted([(r.type, b"" if r.type == 10 else r.value) for r in recs]), ext
+
+
+def _item_odd_records(c):
+    """For nested-odd-in-rk: the unknown records of every scheme item, as bytes."""
+    d = codec.as_dict(c.records)
+    items = ([d[4]] if 4 in d else []) + (codec.parse_entry_list(d[6]) if 6 in d else [])
+    return b"".join(codec.bigsize(r.type) + codec.lp(r.value) for i in items for r in codec.parse_stream(i)
+                    if r.type not in cr.ITEM_TYPES)
+
+
 class _Server(ThreadingHTTPServer):
     def server_bind(self):
         # HTTPServer.server_bind calls socket.getfqdn(), a reverse DNS lookup that can
@@ -657,6 +730,13 @@ FAULT_CASES = {
     "late-expiry": "ERR-EXPIRY-BEFORE-PLUG",
     "nonce-reuse": "OFR-NONCE-ONE-MINT",
     "no-receipt-on-failed": "RCPT-EVERY-COMMIT",
+    "nested-odd-rejected": "ATT-NESTED-ODD",
+    "nested-odd-in-rk": "ATT-NESTED-ODD",
+    "nested-even-ignored": "ERR-NESTED-EVEN",
+    "ext-even-ignored": "ERR-EXT-EVEN",
+    "offer-size-unchecked": "ERR-OFFER-TOO-LARGE",
+    "htu-from-host": "SCOPE-MANIFEST-ORIGIN",
+    "scope-from-host": "SCOPE-MANIFEST-ORIGIN",
 }
 
 # Faults that must also be caught when the runner is given no --role at all.
