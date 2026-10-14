@@ -69,14 +69,35 @@ def requirements():
     return out
 
 
-def coverage_rows():
+ROW_ID = re.compile(r"^\| ((?:R|A|N|D)-[0-9.]+-?[0-9]*[a-z]?) \|")
+
+
+def coverage_rows(all_rows=False):
+    """Rows keyed by ID. R-<sec>-<nn> rows map the extracted sentences; sub-rows
+    (R-<sec>-<nn><letter>) and A-, N-, D- rows map algorithms, the section 14
+    negative list and DECISIONS rows. all_rows=True returns every row."""
     rows = {}
     for line in COVERAGE.read_text().splitlines():
-        if not line.startswith("| R-"):
+        m = ROW_ID.match(line)
+        if not m:
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        rows[cells[0]] = cells
+        if all_rows or re.fullmatch(r"R-[0-9.]+-[0-9]{2}", cells[0]):
+            rows[cells[0]] = cells
     return rows
+
+
+def check_refs(rid, row, cases, groups, errors):
+    named = False
+    for ref in re.findall(r"`([a-z-]+\.json)#([A-Za-z0-9]+)`", row[4]):
+        named = True
+        if ref[0] not in groups or ref[1] not in groups[ref[0]]:
+            errors.append(f"{rid}: no vector group {ref[0]}#{ref[1]}")
+    for cid in re.findall(r"`([A-Z][A-Z0-9-]+)`", row[5]):
+        named = True
+        if cid not in cases:
+            errors.append(f"{rid}: no runner case {cid}")
+    return named
 
 
 def known_runner_cases():
@@ -113,21 +134,23 @@ def check():
             errors.append(f"{r['id']}: quote not taken from the sentence: {row[3][:60]}")
         if row[1] != r["section"]:
             errors.append(f"{r['id']}: section {row[1]} should be {r['section']}")
-        vec, run_cases, status = row[4], row[5], row[6]
-        named = False
-        for ref in re.findall(r"`([a-z-]+\.json)#([A-Za-z0-9]+)`", vec):
-            named = True
-            if ref[0] not in groups or ref[1] not in groups[ref[0]]:
-                errors.append(f"{r['id']}: no vector group {ref[0]}#{ref[1]}")
-        for cid in re.findall(r"`([A-Z][A-Z0-9-]+)`", run_cases):
-            named = True
-            if cid not in cases:
-                errors.append(f"{r['id']}: no runner case {cid}")
-        if not named and "untestable black-box" not in status:
+        named = check_refs(r["id"], row, cases, groups, errors)
+        if not named and "untestable black-box" not in row[6]:
             errors.append(f"{r['id']}: names no vector group or runner case and is not marked untestable")
     for rid in rows:
         if rid not in ids:
             errors.append(f"{rid}: row for a requirement that draft-00 does not have")
+    for rid, row in coverage_rows(all_rows=True).items():
+        if rid in rows:
+            continue
+        if len(row) < 7:
+            errors.append(f"{rid}: row needs 7 cells")
+            continue
+        parent = re.match(r"(R-[0-9.]+-[0-9]{2})[a-z]$", rid)
+        if parent and parent.group(1) not in ids:
+            errors.append(f"{rid}: sub-row of a requirement draft-00 does not have")
+        if not check_refs(rid, row, cases, groups, errors) and "untestable black-box" not in row[6]:
+            errors.append(f"{rid}: names no vector group or runner case and is not marked untestable")
     return reqs, errors
 
 
@@ -143,8 +166,12 @@ def main(argv):
         print(f"coverage: {len(errors)} problem(s) over {len(reqs)} requirements", file=sys.stderr)
         return 1
     rows = coverage_rows()
+    every = coverage_rows(all_rows=True)
     untestable = sum(1 for r in reqs if "untestable black-box" in rows[r["id"]][6])
-    print(f"coverage: {len(reqs)} normative sentences, every one mapped; {untestable} marked untestable black-box")
+    runner = sum(1 for r in reqs if re.search(r"`[A-Z][A-Z0-9-]+`", rows[r["id"]][5]))
+    vectors = sum(1 for r in reqs if "`" in rows[r["id"]][4])
+    print(f"coverage: {len(reqs)} normative sentences, every one mapped ({vectors} by vectors, {runner} by runner "
+          f"cases, {untestable} marked untestable black-box); {len(every) - len(rows)} further rows checked")
     return 0
 
 

@@ -1,0 +1,127 @@
+# Conformance coverage of socket draft-00
+
+Spec text licensed CC-BY-4.0, (c) BNAP contributors.
+
+Every sentence of [socket-draft-00.md](../spec/socket-draft-00.md) that uses a BCP 14 key word in capitals has a row here, with the vector groups ([vectors/cases/](../vectors/cases/)) and the [run.py](run.py) cases that test it. `python3 -I conformance/coverage_check.py` extracts the sentences again and fails if a row is missing, if a quote is not taken from its sentence, or if a row names a vector group or runner case that does not exist. `--list` prints the sentences with their IDs.
+
+- **ID**: `R-<section>-<nn>`, in document order within the section. Sub-rows (`R-4.4-01a`) split a sentence that introduces a list.
+- **Vectors**: `<file>#<group type>`. An implementation passes a group by giving every case's result and expected values.
+- **Runner**: case IDs of `run.py`. A case marked SHOULD in the runner only warns.
+- **Status**: `covered`, `partial` (what is not reached), `client duty` (a rule on clients, checked through vectors, since a black-box runner talks to servers), or `untestable black-box` with the reason.
+
+Under the tables: the normative algorithms in code blocks (A rows), the negative vectors section 14 promises (N rows) and the provisional DECISIONS the suite applies (D rows).
+
+## Normative sentences
+
+| ID | § | Level | Requirement (quoted, shortened) | Vectors | Runner | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| R-2-01 | 2 | SHOULD | "Signers SHOULD use fresh auxiliary randomness" | | | untestable black-box: a signature made with fixed or reused auxiliary randomness verifies exactly like one made with fresh randomness; the vectors use 32 zero bytes on purpose |
+| R-2-02 | 2 | MUST | "An absent record and a present record with an empty value hash the same, and MUST mean the same." | `credential.json#Envelope` | `ATT-EMPTY-FORMS` | covered |
+| R-2-03 | 2 | MUST | "A receiver that meets an unknown even type MUST reject the object as MALFORMED." | `tlv.json#EvenOddRule`, `tlv.json#NestedEvenOdd`, `offer.json#OfferParse`, `credential.json#CredentialParse` | `ERR-UNKNOWN-EVEN`, `ERR-FIELD-MIN` | covered |
+| R-2-04 | 2 | MUST | "It MUST ignore an unknown odd type." | `tlv.json#EvenOddRule`, `tlv.json#NestedEvenOdd`, `offer.json#OfferIdAndSignature`, `response.json#ResponseParse` | `ATT-UNKNOWN-ODD`, `OFR-PARSE` | covered |
+| R-2-05 | 2 | MUST | "its unknown odd records outside ext MUST NOT affect processing in any way." | `credential.json#CredentialParse`, `credential.json#WitnessOverDigest` | `ATT-UNKNOWN-ODD` | covered |
+| R-2-06 | 2 | SHOULD | "Senders SHOULD add one GREASE record...to every Offer and Credential" | `offer.json#OfferParse` | `OFR-GREASE` | covered for offers; credentials are a client duty, and the runner sends GREASE in `ATT-UNKNOWN-ODD` |
+| R-2-07 | 2 | MUST | "an Offer MUST NOT exceed 4,096 bytes, a Credential 16,384 bytes and a Response 8,192 bytes." | `offer.json#OfferParse`, `offer.json#GateOfferCheck`, `credential.json#CredentialParse`, `response.json#ResponseParse` | `ERR-TOO-LARGE`, `OFR-PARSE`, `RCPT-SIZE` | covered; the HTTP cap of DECISIONS row 30 is applied (D-30) |
+| R-4.1-01 | 4.1 | MUST | "quote_expires tu64; defaults to expires and MUST NOT exceed it" | `offer.json#OfferParse`, `offer.json#GateOfferCheck` | `OFR-PARSE` | covered |
+| R-4.1-02 | 4.1 | MUST | "pay_index tu64, zero-based index into pay; that entry's scheme MUST be class O." | `offer.json#OfferRules`, `offer.json#OfferParse` | `OFR-CLASS-RULES` | covered |
+| R-4.4-01 | 4.4 | MUST | "A client that receives an offer MUST parse it fully and MUST check:" | `offer.json#ClientOfferCheck`, `offer.json#OfferParse` | `OFR-PARSE`, `OFR-KEY`, `OFR-SIG`, `OFR-EXPIRY`, `OFR-INFO`, `OFR-SCOPE` | covered; the runner applies each client check to every live offer, the vectors test client code |
+| R-4.4-01a | 4.4 | MUST | "that version is supported, expires is in the future, and issued_at, if present, is not in the future" | `offer.json#ClientOfferCheck` | `OFR-EXPIRY`, `OFR-PARSE` | covered |
+| R-4.4-01b | 4.4 | MUST | "that offer_key is listed for use offer in the origin's pinned manifest and has not expired" | `offer.json#ClientOfferCheck`, `manifest.json#Pinning` | `OFR-KEY`, `MAN-PIN` | covered |
+| R-4.4-01c | 4.4 | MUST | "that offer_sig verifies" | `offer.json#ClientOfferCheck`, `offer.json#OfferIdAndSignature` | `OFR-SIG` | covered |
+| R-4.4-01d | 4.4 | MUST | "that info, if present, is on the origin the offer came from" | `offer.json#ClientOfferCheck` | `OFR-INFO` | covered |
+| R-4.4-01e | 4.4 | MUST | "that scope matches the request it is about to send, or the manifest route it expects" | `offer.json#ClientOfferCheck`, `http-scope.json#ActionScope` | `OFR-SCOPE` | covered |
+| R-4.4-01f | 4.4 | MUST | "that every pay entry it might use fits its spend policy" | | | untestable black-box: client-local policy; the runner enforces its own (`--max-spend-sat`) |
+| R-4.4-01g | 4.4 | MUST | "It ignores entries whose scheme it does not know." | `offer.json#ClientOfferCheck`, `offer.json#OfferRules` | | client duty |
+| R-4.4-02 | 4.4 | MUST | "A gate that receives a credential MUST check the offer inside it before calling any plug, in this order:" | `offer.json#GateOfferCheck` | `ERR-BAD-OFFER-FLIP`, `ERR-BAD-OFFER-ID`, `ERR-WRONG-SCOPE-EXACT`, `ERR-NOT-OFFERED` | covered; the order cases carry two faults each, and the runner sends scheme garbage under a bad offer, so a plug called first would answer BAD_CREDENTIAL |
+| R-4.4-02a | 4.4 | MUST | "Size. Reject an oversize object with TOO_LARGE." | `offer.json#GateOfferCheck`, `offer.json#OfferParse` | `ERR-TOO-LARGE` | covered |
+| R-4.4-02b | 4.4 | MUST | "Parse and version. Reject a parse failure with MALFORMED, and an unsupported version with VERSION." | `offer.json#GateOfferCheck` | `ERR-VERSION`, `ERR-BAD-OFFER-FLIP` | covered |
+| R-4.4-02c | 4.4 | MUST | "Authenticity. An offer with mac passes only if the MAC verifies under a current or retained K_mac." | `offer.json#GateOfferCheck` | `ERR-BAD-OFFER-FLIP`, `ERR-ADVANCE-KEY` | covered; retained keys only in vectors |
+| R-4.4-02d | 4.4 | MUST | "Expiry. Check expires, the chosen entry's quote_expires, and that issued_at is not in the future." | `offer.json#GateOfferCheck` | `ATT-STALE` | covered; quote_expires only in vectors |
+| R-4.4-02e | 4.4 | MUST | "Scope. A mismatch is WRONG_SCOPE." | `offer.json#GateOfferCheck` | `ERR-WRONG-SCOPE-EXACT`, `ERR-WRONG-SCOPE-ROUTE` | covered |
+| R-4.4-02f | 4.4 | MUST | "Offered schemes." | `offer.json#GateOfferCheck` | `ERR-NOT-OFFERED` | covered (same rule as R-4.4-05) |
+| R-4.4-03 | 4.4 | MUST | "It MUST carry issued_at, and it passes only if offer_key is a key this gate holds" | `offer.json#GateOfferCheck` | `ERR-ADVANCE-KEY` | partial: the runner cannot make an advance offer under a key the gate holds; the vectors cover all three conditions |
+| R-4.4-04 | 4.4 | MUST | "A gate MUST NOT trust a key because the offer names it." | `offer.json#GateOfferCheck` | `ERR-ADVANCE-KEY` | covered |
+| R-4.4-05 | 4.4 | MUST | "Every scheme the credential uses MUST appear in the offer, or the result is NOT_OFFERED." | `offer.json#GateOfferCheck` | `ERR-NOT-OFFERED` | covered |
+| R-5.1-01 | 5.1 | MUST | "Everything a scheme verifies MUST be in its body or witness." | `credential.json#WitnessOverDigest` | `ATT-BODY-ONLY` | covered for DPoP; other schemes need their adapters' vectors |
+| R-5.1-02 | 5.1 | MUST | "MUST have the client copy those fields into the body." | | `ATT-BODY-ONLY` | covered for DPoP (profile bnap-conf-dpop-1) |
+| R-5.1-03 | 5.1 | MUST | "It MUST NOT read them from the request instead" | | `ATT-BODY-ONLY` | covered for DPoP |
+| R-5.1-04 | 5.1 | MUST | "the adapter MUST build the signature base from the gate's own Context and the carrier's scope inputs" | | `ATT-CONTEXT-BOUND`, `ATT-CROSS-REQUEST` | covered for DPoP; Web Bot Auth needs keys the runner cannot register |
+| R-5.1-05 | 5.1 | MUST | "A scheme MUST reject a body that contains any byte it does not verify" | | `ATT-CANONICAL-BODY` | partial: DPoP only; every scheme needs its own canonical-body vectors |
+| R-5.3-01 | 5.3 | MUST | "If binding is present, the gate MUST compute the tls-exporter value...and reject a mismatch with BINDING." | `credential.json#Envelope`, `outcomes.json#Trace` | `ERR-BINDING` | partial: Python's ssl module exposes no exporter, so the runner sends random bindings; a correct binding is never presented |
+| R-5.3-02 | 5.3 | MUST | "MUST reject credentials that carry a binding, and its routes MUST NOT require one." | | `ERR-BINDING` | partial: whether TLS ends at a front is invisible to the runner; that routes do not require a binding is untestable black-box |
+| R-5.4-01 | 5.4 | MUST | "The scheme's adapter then MUST:" | `credential.json#NativeEnvelope` | `OFR-NATIVE-EMBED`, `PAY-NATIVE`, `PAY-OFFER-BINDING` | covered with a payer for L402; recovering the OfferID statelessly is checked through the embedding |
+| R-6.1-01 | 6.1 | MUST | "The gate MUST NOT admit such a credential unless its offer expires at least 60 seconds before that record can be deleted" | `outcomes.json#ReusableAdmissionWindow`, `outcomes.json#Trace` | | untestable black-box: the outcome record lives replay_window (a day by default), so a re-run after purge is out of a test's reach |
+| R-6.1-02 | 6.1 | MUST | "A scheme MUST return a rail reference for every payment its credential relies on." | `credential.json#RailId`, `outcomes.json#Trace` | `PAY-TWO-SCHEMES` | covered with a payer: a missing rail reference would admit one payment twice |
+| R-6.1-03 | 6.1 | MUST | "MUST have the gate commit that payment's RailId when it mints." | | `NOTES-VALUE` | untestable black-box until the notes draft-00 spec lands (the case skips with the reason) |
+| R-6.2-01 | 6.2 | MUST | "Its UseId MUST name a stable identity" | `offer.json#OfferRules`, `credential.json#CounterKeys` | `ATT-QUOTA`, `OFR-CLASS-RULES` | covered |
+| R-6.3-01 | 6.3 | MUST | "The store MUST run the commit as one serializable transaction and MUST make it durable before the action starts:" | `outcomes.json#Trace` | `ATT-PENDING`, `PAY-TWO-SCHEMES`, `REPLAY-RECORDED` | partial: atomicity under concurrency is probed; durability needs a crash, untestable black-box |
+| R-6.4-01 | 6.4 | MUST | "The gate MUST NOT send the Response, or any change in it, before this write is durable" | `outcomes.json#Trace` | | untestable black-box: needs a crash between the write and the send |
+| R-6.4-02 | 6.4 | MUST | "The gate MUST stop or discard any action still running at that point, so pending_timeout MUST exceed the route's longest action" | `outcomes.json#Trace` | | untestable black-box: needs an action that outlives pending_timeout on the target; the traces fix what the store must do |
+| R-6.4-03 | 6.4 | MUST | "The scheme MUST NOT pay out anything beyond that recorded result." | `outcomes.json#Trace` | `REPLAY-RECORDED` | covered: scheme_result and charged must not change on replay |
+| R-7-01 | 7 | MUST | "Only attestations of binding class S, A or O may waive, discount or carry a quota, and the gate MUST NOT build an offer that breaks this." | `offer.json#OfferRules`, `pricing.json#BuildRules` | `OFR-CLASS-RULES` | covered |
+| R-7-02 | 7 | SHOULD | "Clients SHOULD pay exact amounts." | `pricing.json#Admit` | | client duty; the runner pays exact amounts |
+| R-8.2-01 | 8.2 | MUST | "A client MUST NOT treat any error as proof of anything." | `response.json#ErrorParse` | | untestable black-box: a property of client code; errors carry no signature |
+| R-9.2-01 | 9.2 | SHOULD | "Online offer and receipt keys SHOULD expire within 30 days" | | `MAN-KEY-LIFETIME` | covered |
+| R-9.2-02 | 9.2 | MUST | "A manifest signed by the current root MUST keep the same backup" | `manifest.json#Pinning` | `MAN-PIN` | partial: one run sees one manifest; the pin vectors cover the change |
+| R-9.2-03 | 9.2 | MUST | "Operators MUST NOT rotate twice within 30 days." | `manifest.json#Pinning` | | untestable black-box: operator behaviour over 30 days; the vectors fix what a client that missed a rotation does |
+| R-10.1-01 | 10.1 | MUST | "The gate MUST forward that same request-target to the application" | `http-scope.json#ActionScope` | `GW-TARGET` | covered (gateway profile, needs `--role echo`) |
+| R-10.1-02 | 10.1 | SHOULD | "Clients SHOULD also send Content-Digest (RFC 9530)" | `http-scope.json#ActionScope` | `SCOPE-BODY-HASH` | client duty; the runner checks the gate hashes the body itself |
+| R-10.2-01 | 10.2 | MUST | "The gate MUST reject the request as MALFORMED if this field differs from the Context it computed" | | `ATT-CONTEXT-HEADER` | covered |
+| R-10.2-02 | 10.2 | MUST | "gates MUST accept a BNAP-Credential field of at least 12,288 bytes" | `credential.json#CredentialParse` | `ERR-FIELD-MIN` | covered |
+| R-10.2-03 | 10.2 | SHOULD | "Clients SHOULD send offer_id rather than the whole offer" | `credential.json#CredentialParse` | `REPLAY-BY-ID` | client duty; the runner checks the gate accepts offer_id |
+| R-10.2-04 | 10.2 | MUST | "Every response to a request that carried BNAP-Credential MUST include Cache-Control: private, no-store, and the gate MUST add it" | | `ERR-CACHE-CONTROL` | covered over every exchange of the run |
+| R-10.2-05 | 10.2 | MUST | "The gate MUST strip any bnap-receipt event the application itself emits." | | `GW-SSE` | covered (gateway profile, needs `--role sse`); trailers are not read, http.client drops them |
+| R-12-01 | 12 | MUST | "A gate MUST NOT list a class O or None scheme, or any native, in a route-scope offer." | `offer.json#OfferRules`, `offer.json#OfferParse` | `OFR-ROUTE-CLASSES` | covered |
+| R-12-02 | 12 | MUST | "Stores MUST make commits durable synchronously." | | | untestable black-box: needs a crash |
+| R-12-03 | 12 | MUST | "The gate MUST bound the plug work and the native challenges that unauthenticated requests can cause" | | `OFR-ROUTE-REUSE` | partial: route offers must not be minted per request; per-address limits need load the runner does not generate |
+| R-12-04 | 12 | SHOULD | "It SHOULD rate-limit verification, run cheap checks first, and mint native challenges at most once per offer nonce" | | `ERR-BAD-OFFER-FLIP`, `OFR-NONCE-FRESH` | partial: cheap offer checks before plugs; rate limits untestable black-box |
+| R-12-05 | 12 | SHOULD | "Offer lifetimes SHOULD be minutes for exact scope and hours at most for route scope." | | `OFR-LIFETIME` | covered (exact at most 3,600 s, route at most 86,400 s) |
+
+## Normative algorithms and tables
+
+| ID | § | Level | Requirement | Vectors | Runner | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| A-2 | 2 | MUST | BigSize, tu64, TLV streams, entry lists, type ranges, base64url | `bigsize.json#BigSizeDecode`, `bigsize.json#Tu64Decode`, `tlv.json#StreamParse`, `tlv.json#EntryList`, `tlv.json#Base64url` | `ERR-NONMINIMAL`, `ERR-ORDER`, `ERR-BASE64` | covered |
+| A-4.1 | 4.1 | MUST | Offer, pay, attest and native records, effect and value ranges | `offer.json#OfferParse` | `OFR-PARSE`, `OFR-MAC`, `OFR-HEADERS` | covered |
+| A-4.2 | 4.2 | MUST | OfferID over S0, offer_sig and mac over S, natives embed the OfferID | `offer.json#OfferIdAndSignature` | `OFR-SIG`, `OFR-NATIVE-EMBED` | covered |
+| A-4.3 | 4.3 | MUST | Exact and route scope modes | `offer.json#GateOfferCheck`, `offer.json#OfferRules` | `OFR-SCOPE`, `ATT-CROSS-REQUEST`, `OFR-ROUTE-REUSE` | covered |
+| A-5.1 | 5.1 | MUST | Credential records and the MALFORMED rules | `credential.json#CredentialParse` | `ERR-OFFER-XOR`, `ERR-ATTEST-ORDER`, `ERR-BINDING-NO-S` | covered |
+| A-5.2 | 5.2 | MUST | Context and Digest | `credential.json#Envelope`, `credential.json#WitnessOverDigest` | `RCPT-BOUND` | covered |
+| A-5.4 | 5.4 | MUST | Native envelope; more than one value credential is MALFORMED | `credential.json#NativeEnvelope`, `credential.json#ValueCredentialCount` | `PAY-NATIVE`, `ERR-TWO-VALUE` | covered |
+| A-6.1 | 6.1 | MUST | UseId, RailId, ReplayKey, rail canonical bytes | `credential.json#UseId`, `credential.json#RailId`, `credential.json#Envelope` | `REPLAY-BY-ID`, `ATT-UNKNOWN-ODD`, `ATT-SAME-KEY` | covered |
+| A-6.2 | 6.2 | MUST | Use models; rate and quota counter keys | `credential.json#CounterKeys`, `outcomes.json#Trace` | `ATT-QUOTA`, `ATT-SAME-KEY` | covered |
+| A-6.3 | 6.3 | MUST | commit(rk, singles, counters); an abort consumes nothing; UNAVAILABLE fails closed | `outcomes.json#Trace` | `ATT-PENDING`, `PAY-TWO-SCHEMES` | covered; UNAVAILABLE only in vectors |
+| A-6.4 | 6.4 | MUST | Settle once from PENDING; timeout; replay of PENDING, OK and FAILED; receipt-only replay | `outcomes.json#Trace` | `REPLAY-RECORDED`, `REPLAY-STATUS-STABLE`, `REPLAY-FAILED`, `ATT-PENDING` | covered |
+| A-7 | 7 | MUST | price() and admit, in offer order | `pricing.json#Price`, `pricing.json#Admit` | `ATT-ADMIT`, `ATT-UNDERPAID`, `ATT-REQUIRED`, `ATT-QUOTA` | covered; the suite's reading of a credential without pay is in the notes |
+| A-7m | 7 | MUST | Metering: charged = min(price(ceil(units x rate / 1000)), price(amount)) | `pricing.json#Metered` | `PAY-METERED` | partial: needs a notes wallet, the runner case skips |
+| A-8.1 | 8.1 | MUST | Response records and the ack | `response.json#ResponseParse`, `response.json#ClientReceiptCheck` | `RCPT-ACK`, `RCPT-FIELDS`, `RCPT-KEY`, `RCPT-EVERY-COMMIT` | covered |
+| A-8.2 | 8.2 | MUST | Error TLV, codes and HTTP statuses, fresh offers | `response.json#ErrorParse`, `response.json#ErrorHttpStatus` | `ERR-FORMAT`, `OFR-402`, `ERR-SCHEME-CODE` | covered |
+| A-9.1 | 9.1 | MUST | Manifest members, JCS, root signature | `manifest.json#ManifestDocument`, `manifest.json#JCS` | `MAN-FETCH`, `MAN-IJSON`, `MAN-VERSION`, `MAN-ORIGIN`, `MAN-SIG`, `MAN-MEMBERS`, `MAN-ROUTES`, `MAN-CARRIER` | covered |
+| A-9.3 | 9.3 | MUST | fetch(origin), pinning, offer and receipt key rules, bnap-required, native challenges | `manifest.json#Pinning`, `manifest.json#NativeChallenge`, `manifest.json#FetchRules` | `MAN-HTTPS`, `MAN-ISSUED`, `MAN-KEYS-LIVE`, `MAN-PIN`, `OFR-NATIVE-MATCH`, `RCPT-KEY` | covered |
+| A-10.1 | 10.1 | MUST | Action scope, route scope, route matching, manifest origin as target | `http-scope.json#ActionScope`, `http-scope.json#RouteScope`, `http-scope.json#RouteMatch`, `http-scope.json#ManifestOrigin` | `OFR-SCOPE`, `OFR-HEADERS`, `SCOPE-BODY-HASH` | covered |
+| A-10.2 | 10.2 | MUST | Header fields: offer challenge, BNAP-Credential, BNAP-Receipt, BNAP-Error | `tlv.json#Base64url` | `OFR-402`, `OFR-CHALLENGE`, `RCPT-EVERY-COMMIT` | covered |
+
+## Negative vectors promised in section 14
+
+| ID | § | Level | Requirement | Vectors | Runner | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| N-14-01 | 14 | MUST | A non-minimal BigSize, records out of order and an unknown even type | `bigsize.json#BigSizeDecode`, `tlv.json#StreamParse`, `tlv.json#EvenOddRule` | `ERR-NONMINIMAL`, `ERR-ORDER`, `ERR-UNKNOWN-EVEN` | covered |
+| N-14-02 | 14 | MUST | A flipped bit in each signed record | `offer.json#ClientOfferCheck`, `offer.json#GateOfferCheck`, `response.json#ClientReceiptCheck` | `ERR-BAD-OFFER-FLIP` | covered |
+| N-14-03 | 14 | MUST | An offer without mac signed by a key the gate does not hold | `offer.json#GateOfferCheck` | `ERR-ADVANCE-KEY` | covered |
+| N-14-04 | 14 | MUST | A class O scheme or a native in a route-scope offer | `offer.json#OfferRules`, `offer.json#OfferParse` | `OFR-ROUTE-CLASSES` | covered |
+| N-14-05 | 14 | MUST | An attest list out of order, and a binding with no class S scheme | `credential.json#CredentialParse` | `ERR-ATTEST-ORDER`, `ERR-BINDING-NO-S` | covered |
+| N-14-06 | 14 | MUST | One payment referred to by two schemes | `credential.json#RailId`, `outcomes.json#Trace` | `PAY-TWO-SCHEMES` | covered with a payer |
+| N-14-07 | 14 | MUST | Two clients sending the same request with different reusable attestations | `credential.json#Envelope`, `outcomes.json#Trace` | `ATT-SAME-KEY` | covered |
+| N-14-08 | 14 | MUST | A replay with a changed binding | `credential.json#Envelope`, `outcomes.json#Trace` | | covered by vectors; the runner cannot present a valid binding (R-5.3-01) |
+| N-14-09 | 14 | MUST | A replay of an OK outcome whose response was not kept | `outcomes.json#Trace` | | covered by vectors; which carrier keeps responses is the target's choice |
+| N-14-10 | 14 | MUST | A manifest rollback and a double rotation | `manifest.json#Pinning` | `MAN-PIN` | covered |
+
+## Provisional decisions applied
+
+| ID | § | Level | Requirement | Vectors | Runner | Status |
+| --- | --- | --- | --- | --- | --- | --- |
+| D-21 | 9.1 | MUST | Default pending_timeout 300 s and replay_window 86,400 s when the manifest omits them | | `MAN-MEMBERS` | partial: bnap_conf.manifest.limits_of applies the defaults; nothing observable checks them |
+| D-24 | 12 | MUST | At most one invoice per offer nonce, plus a per-address mint limit | | `OFR-NONCE-FRESH` | partial: each 402 must carry a fresh nonce; per-address limits untestable black-box |
+| D-25 | 7 | MUST | Class None value schemes only at price 0, never waive or discount | `pricing.json#BuildRules`, `offer.json#OfferRules` | `OFR-CLASS-RULES` | covered |
+| D-30 | 10.2 | MUST | The HTTP carrier caps a Credential at 9,216 bytes; larger is TOO_LARGE | `credential.json#CredentialParse` | `ERR-TOO-LARGE`, `ERR-FIELD-MIN` | covered |
+| D-31 | 5.1 | MUST | bnap:notes rewritten in draft-00 terms, TLV body | | `NOTES-VALUE` | untestable black-box: spec/schemes/bnap-notes-draft-00.md is not on develop; the case skips with the reason |
