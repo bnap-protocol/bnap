@@ -1,0 +1,168 @@
+# NUT-XX: HTTP 402 with a self-issued mint
+
+`optional`
+
+`uses: NUT-06, NUT-07, NUT-09, NUT-12, NUT-13, NUT-18, NUT-26`
+
+`depends on: NUT-24, NUT-XX (key-secret proofs), NUT-04, NUT-20, NUT-23`
+
+---
+
+[NUT-24][24] lets a server ask for ecash in an HTTP 402 response. This NUT covers the case where the server is its own mint: it accepts only proofs it issued itself, for its own origin. That makes four things possible that NUT-24 leaves open:
+
+- **Request binding.** Every proof is a [key-secret proof][xx-keys] whose witness signs a digest of the exact request, so a payment copied from a log or a proxy cannot pay for anything else.
+- **Change and refunds.** The wallet sends blinded outputs with its proofs, and the server signs back, in the response, exactly the part of the credential's value it did not charge, also when the action fails.
+- **Funding inside the 402.** A wallet with no proofs yet gets a [NUT-23][23] Lightning quote in the 402, pays it, and redeems it in its next request.
+- **Receipts.** Every paid response carries a signed receipt.
+
+The envelope that carries the payment is the BNAP socket ([draft-bnap-socket][socket]): a signed offer in the 402, a credential in the retried request, and a signed response. The Cashu side is the `bnap:notes` scheme ([bnap-notes][notes]). This NUT states what a Cashu wallet and a Cashu mint must do to take part, and leaves the byte layouts to those two documents.
+
+## Roles
+
+- The **server** is an HTTP origin, such as a paid API, with a gate in front of it.
+- The **issuer** is the server's own mint. It is reached at an `https` URL on the server's origin, and its keysets are [key-secret keysets][xx-keys] with unit `sat` that sign for this origin only.
+- The **wallet** holds proofs of that issuer and pays the server with them.
+
+## The 402 response
+
+A server answers a request that needs payment with status 402 and these fields:
+
+1. `X-Cashu`: a payment request as [NUT-24][24] defines it, encoded as [NUT-18][18] (`creqA`) or [NUT-26][26] (`creqB`), with:
+   - `a`: the amount of the offer's `bnap:notes` entry in sat, before attestations: the price, or for a metered action the most it can cost. An attestation the wallet earns, a waive, a discount or a quota, lowers what it must send (see [Paying](#paying), step 3);
+   - `u`: `"sat"`;
+   - `m`: a one-element list, the issuer's URL;
+   - `s`: `true`;
+   - `i`: the lowercase hex of the BNAP OfferID of the offer in item 2;
+   - no transport, because the payment travels in-band, and no `nut10`, because key-secret proofs replace locking.
+2. `WWW-Authenticate: BNAP offer="..."`: the BNAP offer ([socket][socket], section 4). It is signed by the server's offer key and lists `bnap:notes` with the issuer URL, the keysets it accepts, their input fees and which of them sign change ([notes][notes], section 5).
+3. Any other challenges the server offers, such as L402 or the `Payment` scheme.
+
+For the notes route offer of the `bnap:notes` test vectors ([notes][notes], section 18.1), which prices the `chat` route of the BNAP examples at up to 2,100 sat, with a 20% discount for wallets that sign with Web Bot Auth, and lists the issuer `https://api.example/cashu` with two keysets, the decoded `X-Cashu` request is
+
+```json
+{
+  "i": "666b28f7f1d68d92e9c180f0d11fe743730d3932ab5bc566d68f53b17b0cbd95",
+  "a": 2100,
+  "u": "sat",
+  "s": true,
+  "m": ["https://api.example/cashu"]
+}
+```
+
+which is 113 bytes of CBOR before the `creqA` encoding.
+
+The issuer advertises this NUT in its [NUT-06][06] info, next to the info of [key-secret proofs][xx-keys], whose `contexts` list is empty, so that its proofs are spent only in the external context of a BNAP credential. An issuer that implements a withdrawal extension ([notes][notes], section 16) lists `"melt"` there instead, because a withdrawal is a [NUT-05][05] melt in the key-secret `melt` context. The entry of this NUT is:
+
+```json
+"XX": {
+  "supported": true,
+  "origin": "https://api.example"
+}
+```
+
+A NUT-24 wallet that does not implement this NUT sees a request whose only mint issues key-secret proofs, and cannot pay it with plain proofs. A server **MAY** offer other schemes in the same 402 for such wallets.
+
+## Paying
+
+A wallet that implements this NUT:
+
+1. verifies the BNAP offer as the socket requires ([socket][socket], section 4.4): its signature under a key of the origin's pinned manifest, its expiry, and its scope;
+2. checks that the `i` of the `X-Cashu` request equals the OfferID of the offer, and uses the offer, not the payment request, for everything that follows;
+3. builds a `bnap:notes` credential body ([notes][notes], section 3): its proofs as inputs, the quote ID when it redeems a funding quote, and blinded outputs of 1, 2, 4, ... sat up to the highest power of two not above the credential's value. The **value** is the sum of the proofs plus the amount of the quote, less the proofs' input fees ([NUT-02][02]; a quote pays no fee; [notes][notes], section 6.3). It must be at least the offer's effective price, `price(amount)` of [socket][socket] section 7, where the server compares the two: the amount of the offer's `bnap:notes` entry, the ceiling for a metered action, after every waive, discount and quota attestation of the offer that the credential carries and that verifies. A waive, or a quota whose counter has room, makes it 0, and each discount lowers it. Under the offer above, a wallet that signs with Web Bot Auth earns the offer's 20% discount and needs a value of 2,100 - 420 = 1,680 sat, not the 2,100 sat of `a`;
+4. signs the socket's Digest ([socket][socket], section 5.2) with the key of each proof, which is the external context of [key-secret proofs][xx-keys], and with the quote's [NUT-20][20] key when it redeems a quote;
+5. retries the request with the credential in the `BNAP-Credential` field.
+
+The wallet **MUST NOT** send the proofs in `X-Cashu` or anywhere else outside the credential, because they would travel without their witnesses. A server **MUST** answer key-secret proofs sent in `X-Cashu` with status 400, as NUT-24 does for a token it cannot accept, and **MUST NOT** redeem them.
+
+## Verifying and settling
+
+The server checks the credential as the socket and the scheme require ([notes][notes], section 6): the keysets, the amounts, each witness over the Digest, each proof's `C`, the output ladder, and the funding quote if there is one. It then commits every proof's `Y` once, atomically and durably, before the action runs, so a proof can never pay twice. A repeat of the same credential for the same request is a replay and gets the stored response instead of running the action again. The socket answers even a replay with `STALE` once more than 60 seconds, its clock skew allowance, have passed since the offer's `expires` or the `quote_expires` of its `bnap:notes` pay entry ([socket][socket], sections 2 and 4.4). The earlier of the two is that entry's **deadline**. The server stops admitting new credentials `pending_timeout` plus 60 seconds before the deadline, so every request it accepted can still collect its refund by replaying ([notes][notes], section 5.4). A wallet replays a request that got no final answer before that deadline (the earlier of the offer's `expires` and the entry's `quote_expires`, which is a time in the offer and not the expiry of a funding quote).
+
+At settlement the server knows the charge: the price for a fixed-price action, the metered charge for a metered one, and 0 when the action failed. It signs blinded outputs worth exactly the value minus the charge, chosen by a fixed rule the wallet can recompute ([notes][notes], section 7), with [NUT-12][12] DLEQ proofs made with the deterministic nonce. The input fees are not part of the value, so the server keeps them in every outcome, and a failed action, with charge 0, gets the whole value back.
+
+## The receipt
+
+Every response to a request that reached the commit carries `BNAP-Receipt`: the BNAP response ([socket][socket], section 8.1), signed by the server's receipt key. It holds the status, the charge, the unit, the OfferID, the Digest it answers and, as the scheme result, one entry per signed output: its index, `C_`, and the DLEQ proof (`e`, `s`).
+
+The wallet checks the receipt key against the pinned manifest, recomputes which outputs had to be signed, verifies each DLEQ proof against the issuer's key for that amount, and only then unblinds its change. It keeps every receipt: together with the credential, a receipt proves what the operator acknowledged for that request.
+
+## Funding inside the 402
+
+A wallet without proofs asks for funding with its first request:
+
+```
+BNAP-Fund: amount=2100, pubkey="02c4..."
+```
+
+`amount` is the most it will pay in sat, and `pubkey` a fresh compressed key for [NUT-20][20]. The server **MAY** then create a [NUT-23][23] BOLT11 mint quote for at most that amount, locked to `pubkey`, and put it in its offer ([notes][notes], section 8). The server **MUST** create at most one quote per offer, **MUST** rate-limit quote creation per client address, and **MUST NOT** create a quote for a request that did not ask for one.
+
+Before it pays, the wallet **MUST** run the checks of [notes][notes] section 8.3: the offer passes the socket's checks, the quote is locked to its key, the quote amount is at most the `amount` it sent in `BNAP-Fund` and equals the amount of the invoice, and the invoice has not expired. It **MUST NOT** pay more than it asked for. It **MUST** save the quote ID, the quote key and the offer before it pays, so that a request that fails can still mint the paid quote. It then pays the invoice from any Lightning wallet, and either:
+
+- redeems the quote inside its next credential, signing the Digest with the quote key. The quote's amount joins the value, and the change comes back as proofs; or
+- mints the quote through [NUT-04][04] as usual, with its [NUT-20][20] signature.
+
+Whichever happens first wins: the issuer records the payment once, and the other path is refused. A request that fails before the commit leaves the quote mintable.
+
+A credential that redeems a quote is linkable to that Lightning payment. Change proofs are not. A wallet that wants every request unlinkable mints first and pays only with proofs. A server whose route requires unlinkable payments offers no quote on that route, and refuses a credential that redeems one, wherever the quote came from, with code 8 (`POLICY`, status 403) before the commit, so the quote stays mintable ([notes][notes], section 8.4).
+
+## Issuer rules
+
+The issuer:
+
+- issues only key-secret keysets ([key-secret proofs][xx-keys]) with unit `sat`, version `01` keyset IDs and a `final_expiry`;
+- serves [NUT-01][01], [NUT-02][02], [NUT-04][04] with [NUT-20][20] required, [NUT-06][06], [NUT-07][07], [NUT-09][09], [NUT-12][12] and [NUT-23][23];
+- refuses every [NUT-03][03] swap of its keysets' proofs, and every [NUT-05][05] melt of them unless it implements a withdrawal extension ([notes][notes], sections 4.2 and 16), lists `"melt"` in its key-secret `contexts`, and the melt carries a witness by every proof's key in that context;
+- answers [NUT-07][07] from the server's record of committed `Y` values, and [NUT-09][09] from its record of signed outputs. It keeps both records until 60 seconds after the keyset's final expiry, because the socket allows 60 seconds of clock skew on every expiry check and a proof still verifies until then ([notes][notes], section 10);
+- publishes a keyset at least 30 days before it signs with it, and always keeps a standby keyset published, so that a compromised keyset can be replaced at once.
+
+Wallets **SHOULD** swap proofs out of a keyset that nears its final expiry, through a request on the server's swap route priced at 0 ([notes][notes], section 11).
+
+## Errors
+
+Errors travel in `BNAP-Error` with the HTTP status the socket assigns ([socket][socket], section 8.2). Errors from the Cashu side are code 10 (`BAD_CREDENTIAL`, status 402) with a `bnap:notes/...` code, such as `bnap:notes/BAD_OUTPUTS` or `bnap:notes/QUOTE_UNPAID` ([notes][notes], section 13). A proof spent before gives code 12 (`SPENT`, status 409). Errors are not signed, and a wallet **MUST NOT** treat one as proof of anything.
+
+## Alignment with NUT-24, NUT-18 and NUT-26
+
+| NUT-24                                                | This NUT                                                                                   |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 402 with `X-Cashu` holding a NUT-18 or NUT-26 request | The same, plus the signed BNAP offer it names in `i`                                       |
+| `a`, `u`, `m`                                         | Amount before attestations (the ceiling when metered), `"sat"`, the server's own mint only |
+| `s`, `i`                                              | `true`; the OfferID in hex                                                                 |
+| `nut10` locking                                       | Absent: key-secret proofs bind each proof to its request                                   |
+| Retry with a `cashuB` token in `X-Cashu`              | Retry with a `BNAP-Credential`; key-secret proofs in `X-Cashu` are refused                 |
+| Status 400 for a token the server cannot accept       | `BNAP-Error` with socket and `bnap:notes` codes                                            |
+| No change                                             | Change and refunds as blind signatures in the receipt                                      |
+| No receipt                                            | A signed BNAP response on every paid request                                               |
+| No replay rule                                        | Each `Y` committed once; a replay returns the stored response                              |
+
+## Security considerations
+
+- **Request binding.** The witness signs the socket's Digest, which covers the offer, the request, the proofs and the blinded outputs, so a payment cannot be moved to another request and change cannot be redirected.
+- **Theft.** Proofs copied in transit are useless without their keys ([key-secret proofs][xx-keys]).
+- **Operator credit.** Proofs of a self-issued mint are a promise by the operator, redeemable only at that origin. Wallets **SHOULD** keep small balances per origin; 5,000 sat is a reasonable default cap.
+- **Invoice abuse.** The server creates funding quotes only on request, at most one per offer, and rate-limited per client address, so a scraper gets an offer, never an invoice.
+- **Linkability.** Proofs are unlinkable to the purchase that funded them. A credential that redeems a quote is linkable to that payment, and small operators can still correlate requests by address and timing.
+- **Spend policy.** Agents and wallets **MUST** enforce spending caps per origin and per task in code; a model's prompt never decides what to pay.
+
+## Test vectors
+
+The key-secret vectors are in [key-secret proofs][xx-keys]. The vectors for the socket are in the BNAP repository ([vectors][vectors]); the `bnap:notes` vectors, which this NUT relies on for the body, the change selection and the receipt, are specified in section 18 of [bnap-notes][notes].
+
+[01]: 01.md
+[02]: 02.md
+[03]: 03.md
+[04]: 04.md
+[05]: 05.md
+[06]: 06.md
+[07]: 07.md
+[09]: 09.md
+[12]: 12.md
+[18]: 18.md
+[20]: 20.md
+[23]: 23.md
+[24]: 24.md
+[26]: 26.md
+[xx-keys]: xx-key-secret-proofs.md
+[socket]: https://github.com/bnap-protocol/bnap/blob/develop/spec/socket-draft-00.md
+[notes]: https://github.com/bnap-protocol/bnap/blob/develop/spec/schemes/bnap-notes-draft-00.md
+[vectors]: https://github.com/bnap-protocol/bnap/blob/develop/vectors/vectors.json

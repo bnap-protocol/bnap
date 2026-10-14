@@ -1,0 +1,62 @@
+---
+# Builds draft-bnap-socket inside the bnap monorepo, where the
+# i-d-template workflows in ietf/.github/workflows cannot run (GitHub reads
+# workflows only from the repository root). To enable it, copy this file to
+# .github/workflows/ietf-draft.yml at the root of the bnap repository.
+name: "Build draft-bnap-socket"
+
+on:
+  push:
+    paths:
+    - "ietf/**"
+    - "spec/socket-draft-00.md"
+  pull_request:
+    paths:
+    - "ietf/**"
+    - "spec/socket-draft-00.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: "Build draft-bnap-socket"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ietf
+    steps:
+    - name: "Checkout"
+      uses: actions/checkout@v6
+
+    - name: "Check the source is in sync with socket-draft-00.md"
+      run: |
+        python3 -I tools/from-draft00.py ../spec/socket-draft-00.md > "$RUNNER_TEMP/draft.md"
+        diff -u draft-bnap-socket.md "$RUNNER_TEMP/draft.md"
+
+    - name: "Setup Ruby"
+      uses: ruby/setup-ruby@v1
+      with:
+        ruby-version: "3.3"
+
+    - name: "Install kramdown-rfc and xml2rfc"
+      run: |
+        gem install kramdown-rfc
+        pipx install xml2rfc
+
+    - name: "Build text and HTML"
+      run: |
+        sed 's/^docname: draft-bnap-socket-latest$/docname: draft-bnap-socket-00/' \
+          draft-bnap-socket.md > draft-bnap-socket-00.md
+        kramdown-rfc draft-bnap-socket-00.md > draft-bnap-socket-00.xml
+        xml2rfc --text --html draft-bnap-socket-00.xml
+
+    - name: "Upload the built draft"
+      uses: actions/upload-artifact@v6
+      with:
+        name: draft-bnap-socket-00
+        path: |
+          ietf/draft-bnap-socket-00.xml
+          ietf/draft-bnap-socket-00.txt
+          ietf/draft-bnap-socket-00.html
