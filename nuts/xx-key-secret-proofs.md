@@ -53,7 +53,7 @@ A keyset is either a key-secret keyset or not; every proof of a key-secret keyse
 }
 ```
 
-`keysets` lists every key-secret keyset the mint has, active or not. `contexts` lists the built-in contexts of this NUT that the mint accepts for them; an empty list means the proofs are spent only in external contexts.
+`keysets` lists every key-secret keyset the mint has, active or not. `contexts` lists the built-in contexts of this NUT that the mint accepts for them; an empty list means the proofs are spent only in external contexts. A mint lists a context only if it offers that operation for its key-secret proofs: the self-issued mint of [HTTP 402 with a self-issued mint][xx-402], for example, lists none, or only `"melt"` when it pays out withdrawals.
 
 ### Key isolation
 

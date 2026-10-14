@@ -51,7 +51,7 @@ For the notes route offer of the `bnap:notes` test vectors ([notes][notes], sect
 
 which is 113 bytes of CBOR before the `creqA` encoding.
 
-The issuer advertises this NUT in its [NUT-06][06] info, next to the info of [key-secret proofs][xx-keys] with an empty `contexts` list:
+The issuer advertises this NUT in its [NUT-06][06] info, next to the info of [key-secret proofs][xx-keys], whose `contexts` list is empty, so that its proofs are spent only in the external context of a BNAP credential. An issuer that implements a withdrawal extension ([notes][notes], section 16) lists `"melt"` there instead, because a withdrawal is a [NUT-05][05] melt in the key-secret `melt` context. The entry of this NUT is:
 
 ```json
 "XX": {
@@ -111,7 +111,7 @@ The issuer:
 
 - issues only key-secret keysets ([key-secret proofs][xx-keys]) with unit `sat`, version `01` keyset IDs and a `final_expiry`;
 - serves [NUT-01][01], [NUT-02][02], [NUT-04][04] with [NUT-20][20] required, [NUT-06][06], [NUT-07][07], [NUT-09][09], [NUT-12][12] and [NUT-23][23];
-- refuses every [NUT-03][03] swap of its keysets' proofs, and every [NUT-05][05] melt of them unless it implements a withdrawal extension whose melts carry a witness for every proof ([notes][notes], sections 4.2 and 16);
+- refuses every [NUT-03][03] swap of its keysets' proofs, and every [NUT-05][05] melt of them unless it implements a withdrawal extension ([notes][notes], sections 4.2 and 16), lists `"melt"` in its key-secret `contexts`, and the melt carries a witness by every proof's key in that context;
 - answers [NUT-07][07] from the server's record of committed `Y` values, and [NUT-09][09] from its record of signed outputs. It keeps both records until 60 seconds after the keyset's final expiry, because the socket allows 60 seconds of clock skew on every expiry check and a proof still verifies until then ([notes][notes], section 10);
 - publishes a keyset at least 30 days before it signs with it, and always keeps a standby keyset published, so that a compromised keyset can be replaced at once.
 
