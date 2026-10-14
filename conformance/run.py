@@ -1414,6 +1414,8 @@ def att_unknown_odd(ctx):
     cred, c, dg = ctx.dpop_credential(p.req, raw, o, extra=[(13, b"\x01"), (3000000011, b"\x2a")])
     r1 = expect_admitted(ctx.request(p.req, credential=cred, label="odd records"))
     check(not r1.replayed, "first send flagged replayed")
+    check(r1.digest == dg, "the receipt digest is not the Digest without the unknown odd records: they entered "
+          "processing (a class S witness over the Digest would no longer verify)")
     plain = cr.build_credential(offer=raw, attest=cr.parse_credential(cred).attest)
     r2 = expect_admitted(ctx.request(p.req, credential=plain, label="without them"))
     check(r2.replayed, "dropping unknown odd records changed the ReplayKey")

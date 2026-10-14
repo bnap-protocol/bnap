@@ -39,6 +39,7 @@ Faults:
   offer-size-unchecked  an inline offer is not checked against max_offer
   htu-from-host         the DPoP adapter builds htu from the raw Host field
   scope-from-host       the action scope is built from the Host field, not the manifest origin
+  top-odd-in-digest     unknown odd records at the top level of the Credential enter the Digest
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -69,7 +70,7 @@ from bnap_conf.crypto import schnorr_pub, key_from_label  # noqa: E402
 FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "bad-ack", "no-dpop",
           "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window", "late-expiry",
           "nonce-reuse", "no-receipt-on-failed", "nested-odd-rejected", "nested-odd-in-rk", "nested-even-ignored",
-          "ext-even-ignored", "offer-size-unchecked", "htu-from-host", "scope-from-host")
+          "ext-even-ignored", "offer-size-unchecked", "htu-from-host", "scope-from-host", "top-odd-in-digest")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -424,6 +425,8 @@ class MockGate:
             dg = cr.digest(ctx, c.binding, c.pay_body, c.attest_bodies)
         else:
             ctx, dg = cr.credential_envelope(c, o.offer_id, act)
+        if "top-odd-in-digest" in self.faults and _top_odd_records(c):
+            dg = codec.tagged("bnap/cred", dg + codec.H(_top_odd_records(c)))
         sent_ctx = [v for k, v in headers if k.lower() == "bnap-context"]
         if sent_ctx:
             try:
@@ -653,6 +656,11 @@ def _blank_ext(raw):
     return codec.tlv_unsorted([(r.type, b"" if r.type == 10 else r.value) for r in recs]), ext
 
 
+def _top_odd_records(c):
+    """For top-odd-in-digest: the unknown records at the top level of the Credential, as bytes."""
+    return b"".join(codec.bigsize(r.type) + codec.lp(r.value) for r in c.records if r.type not in cr.CRED_TYPES)
+
+
 def _item_odd_records(c):
     """For nested-odd-in-rk: the unknown records of every scheme item, as bytes."""
     d = codec.as_dict(c.records)
@@ -737,6 +745,7 @@ FAULT_CASES = {
     "offer-size-unchecked": "ERR-OFFER-TOO-LARGE",
     "htu-from-host": "SCOPE-MANIFEST-ORIGIN",
     "scope-from-host": "SCOPE-MANIFEST-ORIGIN",
+    "top-odd-in-digest": "ATT-UNKNOWN-ODD",
 }
 
 # Faults that must also be caught when the runner is given no --role at all.
