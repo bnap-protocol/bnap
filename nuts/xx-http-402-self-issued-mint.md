@@ -28,7 +28,7 @@ The envelope that carries the payment is the BNAP socket ([draft-bnap-socket][so
 A server answers a request that needs payment with status 402 and these fields:
 
 1. `X-Cashu`: a payment request as [NUT-24][24] defines it, encoded as [NUT-18][18] (`creqA`) or [NUT-26][26] (`creqB`), with:
-   - `a`: the price in sat; for a metered action, the most it can cost;
+   - `a`: the amount of the offer's `bnap:notes` entry in sat, before attestations: the price, or for a metered action the most it can cost. A discount the wallet earns lowers what it must send (see [Paying](#paying), step 3);
    - `u`: `"sat"`;
    - `m`: a one-element list, the issuer's URL;
    - `s`: `true`;
@@ -37,7 +37,7 @@ A server answers a request that needs payment with status 402 and these fields:
 2. `WWW-Authenticate: BNAP offer="..."`: the BNAP offer ([socket][socket], section 4). It is signed by the server's offer key and lists `bnap:notes` with the issuer URL, the keysets it accepts, their input fees and which of them sign change ([notes][notes], section 5).
 3. Any other challenges the server offers, such as L402 or the `Payment` scheme.
 
-For the notes route offer of the `bnap:notes` test vectors ([notes][notes], section 18.1), which prices the `chat` route of the BNAP examples and lists the issuer `https://api.example/cashu` with two keysets, the decoded `X-Cashu` request is
+For the notes route offer of the `bnap:notes` test vectors ([notes][notes], section 18.1), which prices the `chat` route of the BNAP examples at up to 2,100 sat, with a 20% discount for wallets that sign with Web Bot Auth, and lists the issuer `https://api.example/cashu` with two keysets, the decoded `X-Cashu` request is
 
 ```json
 {
@@ -68,7 +68,7 @@ A wallet that implements this NUT:
 
 1. verifies the BNAP offer as the socket requires ([socket][socket], section 4.4): its signature under a key of the origin's pinned manifest, its expiry, and its scope;
 2. checks that the `i` of the `X-Cashu` request equals the OfferID of the offer, and uses the offer, not the payment request, for everything that follows;
-3. builds a `bnap:notes` credential body ([notes][notes], section 3): its proofs as inputs, the quote ID when it redeems a funding quote, and blinded outputs of 1, 2, 4, ... sat up to the highest power of two not above the credential's value. The **value** is the sum of the proofs plus the amount of the quote, less the proofs' input fees ([NUT-02][02]; a quote pays no fee), and must be at least the price, or the ceiling for a metered action ([notes][notes], section 6.3);
+3. builds a `bnap:notes` credential body ([notes][notes], section 3): its proofs as inputs, the quote ID when it redeems a funding quote, and blinded outputs of 1, 2, 4, ... sat up to the highest power of two not above the credential's value. The **value** is the sum of the proofs plus the amount of the quote, less the proofs' input fees ([NUT-02][02]; a quote pays no fee; [notes][notes], section 6.3). It must be at least the offer's effective price after attestations, `price(amount)` of [socket][socket] section 7, where the server compares the two: the price less any discount, and for a metered action the ceiling less any discount. Under the offer above, a wallet that signs with Web Bot Auth earns the offer's 20% discount and needs a value of 2,100 - 420 = 1,680 sat, not the 2,100 sat of `a`;
 4. signs the socket's Digest ([socket][socket], section 5.2) with the key of each proof, which is the external context of [key-secret proofs][xx-keys], and with the quote's [NUT-20][20] key when it redeems a quote;
 5. retries the request with the credential in the `BNAP-Credential` field.
 
@@ -123,17 +123,17 @@ Errors travel in `BNAP-Error` with the HTTP status the socket assigns ([socket][
 
 ## Alignment with NUT-24, NUT-18 and NUT-26
 
-| NUT-24                                                | This NUT                                                                   |
-| ----------------------------------------------------- | -------------------------------------------------------------------------- |
-| 402 with `X-Cashu` holding a NUT-18 or NUT-26 request | The same, plus the signed BNAP offer it names in `i`                       |
-| `a`, `u`, `m`                                         | Price (the ceiling when metered), `"sat"`, the server's own mint only      |
-| `s`, `i`                                              | `true`; the OfferID in hex                                                 |
-| `nut10` locking                                       | Absent: key-secret proofs bind each proof to its request                   |
-| Retry with a `cashuB` token in `X-Cashu`              | Retry with a `BNAP-Credential`; key-secret proofs in `X-Cashu` are refused |
-| Status 400 for a token the server cannot accept       | `BNAP-Error` with socket and `bnap:notes` codes                            |
-| No change                                             | Change and refunds as blind signatures in the receipt                      |
-| No receipt                                            | A signed BNAP response on every paid request                               |
-| No replay rule                                        | Each `Y` committed once; a replay returns the stored response              |
+| NUT-24                                                | This NUT                                                                                   |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| 402 with `X-Cashu` holding a NUT-18 or NUT-26 request | The same, plus the signed BNAP offer it names in `i`                                       |
+| `a`, `u`, `m`                                         | Amount before attestations (the ceiling when metered), `"sat"`, the server's own mint only |
+| `s`, `i`                                              | `true`; the OfferID in hex                                                                 |
+| `nut10` locking                                       | Absent: key-secret proofs bind each proof to its request                                   |
+| Retry with a `cashuB` token in `X-Cashu`              | Retry with a `BNAP-Credential`; key-secret proofs in `X-Cashu` are refused                 |
+| Status 400 for a token the server cannot accept       | `BNAP-Error` with socket and `bnap:notes` codes                                            |
+| No change                                             | Change and refunds as blind signatures in the receipt                                      |
+| No receipt                                            | A signed BNAP response on every paid request                                               |
+| No replay rule                                        | Each `Y` committed once; a replay returns the stored response                              |
 
 ## Security considerations
 
