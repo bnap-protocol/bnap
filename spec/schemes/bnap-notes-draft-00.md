@@ -200,7 +200,7 @@ These are the NUT-23 quote fields a client needs, so it can pay from the 402 wit
 - `fund_quote` MUST appear only in exact-scope offers, because a route-scope offer is the same for every client (draft-00 5.1) (provisional).
 - A gate MAY send such an exact-scope notes offer, made for one request to carry a `fund_quote` (8.2), on a route that the manifest lists with `"scope": "route"`, next to that route's route-scope offer (provisional). Draft-00 4.3 allows a class S scheme in an exact-scope offer. This document reads the rule of draft-00 9.1, that such a route "gets route-scope offers for its class S and A schemes", as the route's default offer set, not as a ban on a per-request exact-scope offer (19.2).
 - A gate MUST NOT put a `fund_quote` in an offer for a route whose `require` sets `link-payment` to `unlinkable`, because a credential that redeems it is linkable to the payment (section 14) (provisional). On such a route it also puts no `max_fund` in the notes pay entry, and admits no credential that redeems a quote, whichever offer the quote came from (8.4) (provisional).
-- A gate MAY cache an exact-scope offer that carries a `fund_quote` as it caches offers with natives, so that the client can send `offer_id`; when it does not, the client sends the offer inline (provisional; draft-00 5.1 names only offers with natives).
+- A gate MUST NOT cache an exact-scope offer that carries a `fund_quote`, so the client sends that offer inline, never its `offer_id`. Draft-00 5.1 caches route-scope offers and exact-scope offers with natives, and adds: "Nothing an unauthenticated request does adds to the cache beyond that." The `BNAP-Fund` request that gets such an offer (8.1) is unauthenticated. An inline offer fits the HTTP carrier's credential cap (3.6).
 - The notes pay entry carries no native record: `bnap:notes` defines no native artifact.
 - **Replay horizon.** Draft-00 4.4 checks expiry before the commit looks for a replay (draft-00 6.3, 6.4), so a replay sent after the offer has expired is STALE even when its outcome exists. Without a limit on late admissions, a credential committed shortly before expiry could never collect its timeout refund (7.5) or a missed change. The **deadline** of a notes entry is the earlier of the offer's `expires` and the entry's `quote_expires`; its **admission cutoff** is that deadline minus `pending_timeout` minus 60 seconds. A gate that lists `bnap:notes` (provisional):
   - MUST NOT commit a new notes credential after the cutoff. It applies the cutoff inside the commit transaction, after the replay lookup of draft-00 6.3: a credential whose outcome exists is still served as a replay, and a new one gets STALE and consumes nothing;
@@ -742,7 +742,7 @@ The manifest lists `chat` with `"scope": "route"`, so the route-scope offer is t
 
 ## Appendix B. Provisional decisions
 
-Each of these is marked "(provisional)" where it is made, and each is open to owner review. P1 to P31 are numbered in the order of the sections that make them. From P32 on, a number is never reassigned: each later decision takes the next free number, wherever it is made, so that references to earlier numbers stay valid. The rows of 19.1 that say "(provisional)" restate P4, P11, P12, P26, P28 and P30, except the one for P31, which 19.1 makes; the rows of 19.2 that say "(provisional)" restate P32, P33 and P34.
+Each of these, except the withdrawn P8, is marked "(provisional)" where it is made, and each is open to owner review. P1 to P31 are numbered in the order of the sections that make them. From P32 on, a number is never reassigned: each later decision takes the next free number, wherever it is made, so that references to earlier numbers stay valid. The rows of 19.1 that say "(provisional)" restate P4, P11, P12, P26, P28 and P30, except the one for P31, which 19.1 makes; the rows of 19.2 that say "(provisional)" restate P32, P33 and P34.
 
 | # | Where | Decision |
 | --- | --- | --- |
@@ -753,7 +753,7 @@ Each of these is marked "(provisional)" where it is made, and each is open to ow
 | P5 | 4.2 | Every BNAP keyset publishes a `final_expiry` |
 | P6 | 5.1 | Notes parameters follow the even/odd rule |
 | P7 | 5.4 | `fund_quote` only in exact-scope offers, and never on routes requiring `link-payment = unlinkable` |
-| P8 | 5.4 | Gates may cache exact-scope offers that carry a `fund_quote` |
+| P8 | 5.4 | Withdrawn: it let gates cache exact-scope offers that carry a `fund_quote`, which draft-00 5.1 rules out. 5.4 now follows draft-00, and the number stays reserved |
 | P9 | 5.4, 7.5, 8.2, 15 | Admission cutoff: no new notes commit later than the deadline minus `pending_timeout` minus 60 s, checked after the replay lookup; offers that list notes admit for at least 60 s; fund quotes expire by the cutoff; wallets replay before the deadline |
 | P10 | 6.2 | Verification does not check whether a fund quote has issued; the RailId commit does, so replays of funded credentials work |
 | P11 | 6.2, 13.1 | Verification reads no use state; v0.4's check that no output was signed before is dropped, and `bnap:notes/OUTPUT_REUSED` is reserved |
