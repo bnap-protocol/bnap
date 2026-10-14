@@ -17,7 +17,7 @@ CONF = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONF))
 
 from bnap_conf import codec, offer as of, credential as cr, response as rs, manifest as mf  # noqa: E402
-from bnap_conf import http as hp, pricing as pr, store as st, client as cl, registry  # noqa: E402
+from bnap_conf import http as hp, pricing as pr, store as st, client as cl, dpop, registry  # noqa: E402
 from bnap_conf.codec import BnapError  # noqa: E402
 from bnap_conf.crypto import schnorr_verify  # noqa: E402
 from bnap_conf._ref import REPO_ROOT  # noqa: E402
@@ -199,6 +199,16 @@ def ev_value_count(i):
     return X("MALFORMED") if n > 1 else V()
 
 
+def ev_dpop_body(i):
+    try:
+        v = dpop.verify_body(b(i["body"]), context=b(i["context"]), method=i["method"], htu=i["htu"], now=i["now"])
+    except dpop.DpopReject:
+        return X("BAD_CREDENTIAL")
+    except BnapError as e:
+        return X(e.code)
+    return V({"thumbprint": v.thumbprint.hex()})
+
+
 def ev_resp_parse(i):
     def go():
         r = rs.parse_response(b(i["response"]), i["max_response"])
@@ -330,7 +340,8 @@ EVALUATORS = {
     "OfferIdAndSignature": ev_offer_id, "ClientOfferCheck": ev_client_offer, "GateOfferCheck": ev_gate_offer,
     "CredentialParse": ev_cred_parse, "Envelope": ev_envelope, "UseId": ev_use_id, "RailId": ev_rail_id,
     "CounterKeys": ev_counter, "NativeEnvelope": ev_native, "WitnessOverDigest": ev_witness,
-    "ValueCredentialCount": ev_value_count, "ResponseParse": ev_resp_parse, "ClientReceiptCheck": ev_receipt,
+    "ValueCredentialCount": ev_value_count, "DpopCanonicalBody": ev_dpop_body, "ResponseParse": ev_resp_parse,
+    "ClientReceiptCheck": ev_receipt,
     "ErrorParse": ev_error_parse, "ErrorHttpStatus": ev_error_status, "ManifestDocument": ev_manifest_doc,
     "JCS": ev_jcs, "Pinning": ev_pinning, "NativeChallenge": ev_native_challenge, "FetchRules": ev_fetch,
     "ActionScope": ev_action_scope, "RouteScope": ev_route_scope, "RouteMatch": ev_route_match,
@@ -396,7 +407,8 @@ class CaseFilesTest(unittest.TestCase):
             "credential": ["attestation stripped", "ext altered", "attest list out of order",
                            "binding with no class S", "two native value credentials",
                            "a BNAP pay and a native L402 token", "one Lightning payment named by L402 and by MPP",
-                           "a replay with a changed binding", "two clients, same request"],
+                           "a replay with a changed binding", "two clients, same request",
+                           "s replaced by n - s", "extra record after the proof"],
             "manifest": ["two root members", "rollback", "second rotation"],
             "pricing": ["two 20% discounts", "class None value scheme at price 0", "bearer attestation trying to discount",
                         "draft-00 10.3: 850 tokens"],

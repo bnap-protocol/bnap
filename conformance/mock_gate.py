@@ -42,6 +42,8 @@ Faults:
   top-odd-in-digest     unknown odd records at the top level of the Credential enter the Digest
   scope-before-expiry   the offer checks run authenticity, then scope, then expiry (4.4 order broken)
   offer-version-masked  the MAC is checked before the offer version, so a version 2 offer is BAD_OFFER
+  high-s-accepted       the DPoP adapter accepts a high-S ES256 signature (plain ECDSA), so a copy of a
+                        proof with s replaced by n - s verifies under another ReplayKey
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -73,7 +75,7 @@ FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "b
           "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window", "late-expiry",
           "nonce-reuse", "no-receipt-on-failed", "nested-odd-rejected", "nested-odd-in-rk", "nested-even-ignored",
           "ext-even-ignored", "offer-size-unchecked", "htu-from-host", "scope-from-host", "top-odd-in-digest",
-          "scope-before-expiry", "offer-version-masked")
+          "scope-before-expiry", "offer-version-masked", "high-s-accepted")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -496,7 +498,8 @@ class MockGate:
 
     def _verify_dpop(self, body, ctx, method, htu, now):
         return dpop.verify_body(body, context=ctx, method=method, htu=htu, now=now,
-                                check_context="strip-attest" not in self.faults)
+                                check_context="strip-attest" not in self.faults,
+                                low_s="high-s-accepted" not in self.faults)
 
     def _verify_pay(self, item, o):
         body = item.body or b""
@@ -764,6 +767,7 @@ FAULT_CASES = {
     "top-odd-in-digest": "ATT-UNKNOWN-ODD",
     "scope-before-expiry": "ERR-EXPIRY-BEFORE-PLUG",
     "offer-version-masked": "ERR-OFFER-VERSION",
+    "high-s-accepted": "ATT-CANONICAL-BODY",
 }
 
 # Faults that must also be caught when the runner is given no --role at all.

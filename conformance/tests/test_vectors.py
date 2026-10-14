@@ -53,6 +53,15 @@ class ReferenceTest(unittest.TestCase):
         x, y = crypto.p256_pub(sk)
         self.assertTrue(crypto.es256_verify(x, y, b"sample", sig))
         self.assertFalse(crypto.es256_verify(x, y, b"other", sig))
+        # The RFC 6979 sample has s > n/2: plain ECDSA accepts both forms, low_s only the low one.
+        self.assertFalse(crypto.es256_is_low_s(sig))
+        low = crypto.es256_low_s(sig)
+        self.assertEqual(low, crypto.es256_other_s(sig))
+        self.assertTrue(crypto.es256_is_low_s(low))
+        self.assertEqual(crypto.es256_other_s(low), sig)
+        self.assertTrue(crypto.es256_verify(x, y, b"sample", low))
+        self.assertFalse(crypto.es256_verify(x, y, b"sample", sig, low_s=True))
+        self.assertTrue(crypto.es256_verify(x, y, b"sample", low, low_s=True))
 
 
 class PrimitiveTest(unittest.TestCase):

@@ -1502,14 +1502,29 @@ def att_body_only(ctx):
     expect_not_admitted(ex)
 
 
-@case("ATT-CANONICAL-BODY", "5.1", "MUST", "a body with bytes the scheme does not verify is refused",
+@case("ATT-CANONICAL-BODY", "5.1", "MUST", "a body with bytes the scheme does not verify is refused: an extra "
+      "record, and the high-S copy of an admitted DPoP proof, which must not settle as a new outcome",
       profiles=WITH_CREDENTIALS)
 def att_canonical_body(ctx):
     p, raw, o = admitted_dpop(ctx)
     good, _, _ = ctx.dpop_credential(p.req, raw, o)
-    body = cr.parse_credential(good).attest[0].body + codec.tlv([(4, b"x")])
+    item = cr.parse_credential(good).attest[0]
+    body = item.body + codec.tlv([(4, b"x")])
     bad = cr.build_credential(offer=raw, attest=[cr.SchemeItem(DPOP, body, None)])
     expect_not_admitted(ctx.request(p.req, credential=bad, label="extra record in the body"))
+    # Signature malleability: plain ECDSA also accepts (r, n - s). The profile requires low-S, so the
+    # copy a party on the path can make of an admitted proof must not count. Its body hash, and so its
+    # ReplayKey, differs from the original's: admitted, it would run the action a second time.
+    r1 = expect_admitted(ctx.request(p.req, credential=good, label="canonical body"))
+    check(r1.status == rs.OK and not r1.replayed, f"the canonical body settled {r1.status_name}, "
+          f"replayed={r1.replayed}")
+    mall = cr.build_credential(offer=raw, attest=[cr.SchemeItem(DPOP, dpop.other_s_body(item.body), None)])
+    ex = ctx.request(p.req, credential=mall, label="high-S copy of the admitted proof")
+    r2 = ex.receipt()
+    check(r2 is None or r2.replayed, f"the high-S copy of an admitted proof settled as a new outcome "
+          f"({ex.describe()}): one client proof ran the action twice (profile {dpop.PROFILE} requires s <= n/2)")
+    if r2 is None:
+        expect_not_admitted(ex)
 
 
 @case("SCOPE-BODY-HASH", "10.1", "MUST", "the gate hashes the content itself and ignores Content-Digest",

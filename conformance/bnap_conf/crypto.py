@@ -200,7 +200,26 @@ def es256_sign(sk, msg):
         h1 = hashlib.sha256(h1).digest()  # unreachable in practice
 
 
-def es256_verify(x, y, msg, sig):
+def es256_is_low_s(sig):
+    """True when the 64-byte r || s signature has s <= n/2."""
+    return len(sig) == 64 and int.from_bytes(sig[32:], "big") <= _N // 2
+
+
+def es256_other_s(sig):
+    """The same signature with s replaced by n - s. Plain ECDSA accepts both, so a verifier that
+    does not insist on one of them lets a party on the path make a second valid signature."""
+    s = int.from_bytes(sig[32:], "big")
+    return sig[:32] + ((_N - s) % _N).to_bytes(32, "big")
+
+
+def es256_low_s(sig):
+    """The low-S form of a 64-byte r || s signature (s <= n/2)."""
+    return sig if es256_is_low_s(sig) else es256_other_s(sig)
+
+
+def es256_verify(x, y, msg, sig, *, low_s=False):
+    """ECDSA P-256 verification of the 64-byte r || s form. With low_s, a signature whose s
+    exceeds n/2 does not verify, so each (key, message) has at most one valid signature per r."""
     if len(sig) != 64 or len(x) != 32 or len(y) != 32:
         return False
     q = (int.from_bytes(x, "big"), int.from_bytes(y, "big"))
@@ -208,6 +227,8 @@ def es256_verify(x, y, msg, sig):
         return False
     r, s = int.from_bytes(sig[:32], "big"), int.from_bytes(sig[32:], "big")
     if not (1 <= r < _N and 1 <= s < _N):
+        return False
+    if low_s and s > _N // 2:
         return False
     e = int.from_bytes(hashlib.sha256(msg).digest(), "big")
     w = _inv(s, _N)

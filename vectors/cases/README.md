@@ -9,7 +9,7 @@ Wycheproof-style test cases for [socket draft-00](../../spec/socket-draft-00.md)
 | [bigsize.json](bigsize.json) | BigSize and tu64, minimal encodings |
 | [tlv.json](tlv.json) | TLV streams, the even/odd rule, nested type ranges, entry lists, base64url |
 | [offer.json](offer.json) | Offer records, class rules, OfferID and offer_sig, the client and gate checks of 4.4 |
-| [credential.json](credential.json) | Credential records, Context, Digest, ReplayKey, UseId, RailId, counter keys, native envelope, witnesses, value-credential count |
+| [credential.json](credential.json) | Credential records, Context, Digest, ReplayKey, UseId, RailId, counter keys, native envelope, witnesses, value-credential count, canonical DPoP bodies |
 | [response.json](response.json) | Response records and ack, the client's receipt rules, the Error TLV and its HTTP statuses |
 | [manifest.json](manifest.json) | Manifest document rules, strict I-JSON, JCS, pinning, native challenges, fetch limits |
 | [http-scope.json](http-scope.json) | Action and route scopes, route matching, manifest origin |
@@ -35,7 +35,7 @@ test = { "tcId", "comment", "flags", "sections", "inputs", "result",
 
 ## Keys and times
 
-The secret keys are SHA-256 of the labels the headers name, as in [vectors.json](../vectors.json): `bnap test offer key`, `bnap test receipt key`, `bnap test root key`, `bnap test backup key`, `bnap test mac key`, `bnap test note key`, plus `bnap conformance ...` keys for strangers, retired MAC keys and rotations. The fixed time is 1,791,700,100 unless a case says otherwise. BIP-340 signatures use 32 zero bytes of auxiliary randomness; the DPoP profile uses RFC 6979 ECDSA.
+The secret keys are SHA-256 of the labels the headers name, as in [vectors.json](../vectors.json): `bnap test offer key`, `bnap test receipt key`, `bnap test root key`, `bnap test backup key`, `bnap test mac key`, `bnap test note key`, plus `bnap conformance ...` keys for strangers, retired MAC keys and rotations. The fixed time is 1,791,700,100 unless a case says otherwise. BIP-340 signatures use 32 zero bytes of auxiliary randomness; the DPoP profile uses RFC 6979 ECDSA, normalized to low-S (s <= n/2), which the profile requires.
 
 ## Reference consumer
 

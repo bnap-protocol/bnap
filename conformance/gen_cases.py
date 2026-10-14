@@ -24,6 +24,7 @@ sys.path.insert(0, str(HERE))
 from bnap_conf import codec, offer as of, credential as cr, response as rs, manifest as mf  # noqa: E402
 from bnap_conf import http as hp, pricing as pr, store as st, client as cl, dpop, registry  # noqa: E402
 from bnap_conf.codec import H, tu64, tlv, BnapError  # noqa: E402
+from bnap_conf import crypto  # noqa: E402
 from bnap_conf.crypto import schnorr_pub, schnorr_sign, schnorr_verify, key_from_label  # noqa: E402
 
 REPO = HERE.parent
@@ -903,6 +904,8 @@ def gen_credential():
         "5.2 and 6.1, with attestations in the credential's sorted order. Scheme bodies are",
         "placeholders, as in vectors.json. The witness key of the class S cases is",
         "SHA-256(\"bnap test note key\"): it signs the Digest, as the bnap:notes registry entry says.",
+        "DpopCanonicalBody uses the suite's DPoP adapter profile bnap-conf-dpop-1 (conformance/bnap_conf/dpop.py)",
+        "with the P-256 key SHA-256(\"bnap conformance dpop key\") and RFC 6979 nonces, normalized to low-S.",
     ], notes(Structure=("MALFORMED", "A 5.1 rule is broken."),
              Version=("VERSION", "An unsupported socket version."),
              Size=("TOO_LARGE", "Over the size limit; the HTTP cap is DECISIONS row 30."),
@@ -913,7 +916,12 @@ def gen_credential():
                                            "over the Digest no longer verifies."),
              SharedRail=("BASIC", "One payment named by two schemes has one RailId."),
              TwoValue=("MALFORMED", "More than one value credential in one request."),
-             Ambiguous=("EDGE", "draft-00 does not settle this; either answer is acceptable.")))
+             Ambiguous=("EDGE", "draft-00 does not settle this; either answer is acceptable."),
+             NonCanonical=("MALFORMED", "A DPoP body that is not the profile's one encoding: it holds bytes the "
+                                        "scheme does not verify (5.1)."),
+             Malleable=("BAD_CREDENTIAL", "A second encoding of a valid proof: plain ECDSA also accepts (r, n - s), "
+                                          "so a party on the path could make it. The profile requires s <= n/2, "
+                                          "so it does not verify (5.1, 12).")))
 
     g = cf.group("CredentialParse", "5.1", "Parse a credential and apply the 5.1 rules. With carrier http, "
                  "the cap is 9,216 bytes (DECISIONS row 30); otherwise max_credential.",
@@ -1132,6 +1140,40 @@ def gen_credential():
               error="MALFORMED" if res == "invalid" else None,
               acceptable_errors=["MALFORMED"] if res == "acceptable" else None,
               flags=["TwoValue"] if res == "invalid" else (["Ambiguous"] if res == "acceptable" else ["Valid"]))
+
+    g = cf.group("DpopCanonicalBody", "5.1", "Verify an httpauth:DPoP body in the suite's adapter profile "
+                 "bnap-conf-dpop-1 for the gate's Context, method, htu and now. valid gives the RFC 7638 key "
+                 "thumbprint. A scheme MUST reject a body with any byte it does not verify (5.1), so every encoding "
+                 "but the profile's one is refused: MALFORMED for a body whose records are not exactly {0, 2}, "
+                 "BAD_CREDENTIAL for a proof that does not verify, a high-S signature included.",
+                 {"body": T_HEX, "context": T_HEX, "method": T_STR, "htu": T_STR, "now": T_INT})
+    dkey = dpop.DpopKey.from_label("bnap conformance dpop key")
+    dctx = cr.context(bytes.fromhex(va["offer_id"]), ACT, None, ["httpauth:DPoP"], None)
+    dhtu = ORIGIN + "/v1/chat/completions"
+    dgood = dpop.make_body(dkey, method="POST", htu=dhtu, iat=NOW, jti="bnap-conformance-1", context=dctx)
+
+    def dbody(comment, body, result, error=None, flags=("Valid",), sections=None):
+        try:
+            v = dpop.verify_body(body, context=dctx, method="POST", htu=dhtu, now=NOW)
+            code = None
+        except dpop.DpopReject:
+            v, code = None, "BAD_CREDENTIAL"
+        except BnapError as e:
+            v, code = None, e.code
+        must(code == error, f"dpop body {comment}: got {code}")
+        g.add(comment, {"body": hx(body), "context": hx(dctx), "method": "POST", "htu": dhtu, "now": NOW}, result,
+              error=error, expected={"thumbprint": hx(v.thumbprint)} if v is not None else None, flags=flags,
+              sections=sections)
+
+    dproof = codec.parse_stream(dgood)[1].value.decode()
+    must(crypto.es256_is_low_s(codec.b64u_decode(dproof.rsplit(".", 1)[1])), "dpop vector proof is low-S")
+    dbody("a canonical body: empty access token, a low-S ES256 proof over the Context", dgood, "valid")
+    dbody("the same proof with s replaced by n - s: plain ECDSA accepts it, the profile does not",
+          dpop.other_s_body(dgood), "invalid", "BAD_CREDENTIAL", ["Malleable"], ["5.1", "12"])
+    dbody("the canonical body with an extra record after the proof", dgood + codec.tlv([(4, b"x")]), "invalid",
+          "MALFORMED", ["NonCanonical"])
+    dbody("the access token record left out instead of sent empty", codec.tlv([(2, dproof.encode())]), "invalid",
+          "MALFORMED", ["NonCanonical"])
     return cf
 
 # ---------------------------------------------------------------- response.json

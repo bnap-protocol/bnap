@@ -9,8 +9,16 @@ suite's assumption, used by run.py and mock_gate.py alike:
   proof   = RFC 9449 DPoP proof, alg ES256, typ dpop+jwt, jwk in the header;
             claims jti, htm, htu, iat, and bnap_ctx = b64u(Context);
             ath = b64u(SHA-256(access token)) when the token is not empty
+  sig     = the JWS signature r || s (RFC 7518 3.4) with s <= n/2 (low-S). A
+            proof whose s exceeds n/2 does not verify under this profile
   htm     = the request method; htu = manifest origin + request path, no query
   local ID = the raw 32-byte RFC 7638 JWK thumbprint (SHA-256)
+
+Low-S is what makes the body canonical (draft-00 5.1, "a scheme MUST reject
+a body that contains any byte it does not verify"): plain ECDSA also accepts
+(r, n - s), so without it anyone on the path could turn one admitted proof
+into a second body that verifies. Its hash differs, so would its ReplayKey,
+and the gate would run the action again from one client proof.
 
 The gate builds htm and htu from its own carrier inputs, never from raw
 request fields (draft-00 5.1). A replay sends the same body, so a gate must
@@ -22,7 +30,7 @@ import json
 
 from . import codec
 from .codec import b64u, b64u_decode, malformed
-from .crypto import es256_sign, es256_verify, p256_pub, key_from_label
+from .crypto import es256_sign, es256_verify, es256_low_s, es256_other_s, p256_pub, key_from_label
 
 SCHEME = "httpauth:DPoP"
 CLAIM = "bnap_ctx"
@@ -67,7 +75,7 @@ def make_proof(key, *, method, htu, iat, jti, context=None, access_token="", omi
     if extra_claims:
         claims.update(extra_claims)
     signing = _seg(header) + "." + _seg(claims)
-    sig = es256_sign(key.sk, signing.encode())
+    sig = es256_low_s(es256_sign(key.sk, signing.encode()))
     return signing + "." + b64u(sig)
 
 
@@ -88,11 +96,22 @@ class DpopReject(Exception):
     pass
 
 
-def verify_body(body, *, context, method, htu, now, skew=60, accept_token=None, check_context=True):
+def other_s_body(body):
+    """The body with its proof's signature s replaced by n - s: the copy a party on the path could
+    make of a proof under plain ECDSA. Under this profile it does not verify."""
+    recs = codec.parse_stream(body)
+    signing, _, sig = recs[1].value.decode().rpartition(".")
+    proof = signing + "." + b64u(es256_other_s(b64u_decode(sig)))
+    return codec.tlv([(r.type, proof.encode() if r.type == 2 else r.value) for r in recs])
+
+
+def verify_body(body, *, context, method, htu, now, skew=60, accept_token=None, check_context=True,
+                low_s=True):
     """Verify a profile body. accept_token(token, thumbprint) -> bool decides tokens.
 
     Raises MALFORMED for a non-canonical body (5.1 canonical bodies) and
-    DpopReject when the attestation does not verify.
+    DpopReject when the attestation does not verify, a high-S signature
+    included. low_s=False is only for the mock gate's high-s-accepted fault.
     """
     recs = codec.parse_stream(body)
     if [r.type for r in recs] != [0, 2]:
@@ -117,7 +136,7 @@ def verify_body(body, *, context, method, htu, now, skew=60, accept_token=None, 
         x, y = b64u_decode(jwk["x"]), b64u_decode(jwk["y"])
     except Exception:
         raise DpopReject("proof-jwk") from None
-    if not es256_verify(x, y, (parts[0] + "." + parts[1]).encode(), sig):
+    if not es256_verify(x, y, (parts[0] + "." + parts[1]).encode(), sig, low_s=low_s):
         raise DpopReject("proof-signature")
     if check_context:
         if claims.get(CLAIM) is None:

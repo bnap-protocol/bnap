@@ -7,7 +7,7 @@ import unittest
 CONF = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(CONF))
 
-from bnap_conf import codec, http as hp, manifest as mf, dpop, lightning as ln, pricing as pr  # noqa: E402
+from bnap_conf import codec, crypto, http as hp, manifest as mf, dpop, lightning as ln, pricing as pr  # noqa: E402
 from bnap_conf.codec import BnapError  # noqa: E402
 
 
@@ -104,6 +104,18 @@ class ProfilesTest(unittest.TestCase):
             dpop.verify_body(bare, context=ctx, method="GET", htu="https://a.example/x", now=1000)
         with self.assertRaises(BnapError):
             dpop.verify_body(body + b"\x01\x00", context=ctx, method="GET", htu="https://a.example/x", now=1000)
+        # Low-S: make_body signs with s <= n/2, and the (r, n - s) copy, a second encoding plain ECDSA
+        # accepts, is refused under the profile.
+        for i in range(8):
+            b_i = dpop.make_body(k, method="GET", htu="https://a.example/x", iat=1000, jti=f"j{i}", context=ctx)
+            sig = codec.b64u_decode(codec.parse_stream(b_i)[1].value.decode().rsplit(".", 1)[1])
+            self.assertTrue(crypto.es256_is_low_s(sig))
+            copy = dpop.other_s_body(b_i)
+            self.assertNotEqual(copy, b_i)
+            args = dict(context=ctx, method="GET", htu="https://a.example/x", now=1000)
+            with self.assertRaises(dpop.DpopReject):
+                dpop.verify_body(copy, **args)
+            self.assertEqual(dpop.verify_body(copy, low_s=False, **args).thumbprint, k.thumbprint())
 
     def test_bolt11_and_macaroon(self):
         inv = ln.encode_bolt11(payment_hash=bytes(range(32)), description_hash=bytes(32), amount_sat=21,
