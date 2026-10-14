@@ -5,7 +5,9 @@ bnap_conf; the test passes when the verdict (valid, invalid with its error,
 or anything for acceptable) and every expected value agree with the file.
 The files are also checked against their schemas and for reproducibility.
 """
+import contextlib
 import importlib.util
+import io
 import json
 import pathlib
 import sys
@@ -414,6 +416,20 @@ class CaseFilesTest(unittest.TestCase):
         self.assertEqual(first, second)
         for name, text in first.items():
             self.assertEqual((CASES / name).read_text(), text, name)
+
+    def test_generator_rejects_unknown_arguments(self):
+        # A mistyped --check must fail with a usage error, not regenerate the files.
+        spec = importlib.util.spec_from_file_location("gen_cases", CONF / "gen_cases.py")
+        gen = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(gen)
+        before = {p: p.stat().st_mtime_ns for p in CASES.rglob("*.json")}
+        for argv, code in ((["--chek"], 2), (["--check", "extra"], 2), (["--help"], 0)):
+            with self.subTest(argv=argv), contextlib.redirect_stderr(io.StringIO()), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(SystemExit) as cm:
+                    gen.main(argv)
+                self.assertEqual(cm.exception.code, code)
+        self.assertEqual(before, {p: p.stat().st_mtime_ns for p in CASES.rglob("*.json")})
 
 
 if __name__ == "__main__":

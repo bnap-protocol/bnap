@@ -13,6 +13,7 @@ generator stops, so a case file can never silently encode a library bug.
 Output is deterministic: fixed keys, fixed times, BIP-340 with zero
 auxiliary randomness, RFC 6979 ECDSA.
 """
+import argparse
 import json
 import pathlib
 import sys
@@ -1934,8 +1935,15 @@ def render():
     return files
 
 
+def parse_args(argv):
+    """Only --check is known; anything else is a usage error (exit 2) and writes nothing."""
+    ap = argparse.ArgumentParser(prog="gen_cases.py", description=__doc__.split("\n\n")[0])
+    ap.add_argument("--check", action="store_true", help="fail if any file on disk differs; write nothing")
+    return ap.parse_args(argv)
+
+
 def main(argv):
-    check = "--check" in argv
+    check = parse_args(argv).check
     files = render()
     bad = []
     for name, text in sorted(files.items()):
