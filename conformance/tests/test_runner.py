@@ -53,7 +53,7 @@ class MutationSelfCheck(unittest.TestCase):
         self.assertTrue(all(s.get("name")[0].isdigit() for s in root))
         page = (out / "report.html").read_text()
         self.assertIn("<title>BNAP conformance report</title>", page)
-        self.assertNotIn("—", page)
+        self.assertNotIn("\u2014", page)
         faulty = json.loads((pathlib.Path(self.tmp.name) / "bad-ack" / "report.json").read_text())
         self.assertGreater(faulty["summary"]["must_fail"], 0)
 
