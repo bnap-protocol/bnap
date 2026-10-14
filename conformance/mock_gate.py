@@ -31,6 +31,7 @@ import hmac
 import json
 import os
 import pathlib
+import socketserver
 import sys
 import threading
 import time
@@ -120,7 +121,7 @@ class MockGate:
         self.invoices = {}
         self.app_counter = 0
         self.lock = threading.RLock()
-        self.server = ThreadingHTTPServer((host, port), _Handler)
+        self.server = _Server((host, port), _Handler)
         self.server.daemon_threads = True
         self.server.gate = self
         self.port = self.server.server_address[1]
@@ -525,6 +526,14 @@ class MockGate:
         if rid == "echo":
             return 200, js, json.dumps({"target": target, "run": n}).encode(), None
         return 200, js, json.dumps({"ok": True, "route": rid, "run": n}).encode(), None
+
+
+class _Server(ThreadingHTTPServer):
+    def server_bind(self):
+        # HTTPServer.server_bind calls socket.getfqdn(), a reverse DNS lookup that can
+        # stall for half a minute where DNS is blocked. The mock needs no server name.
+        socketserver.TCPServer.server_bind(self)
+        self.server_name, self.server_port = self.server_address[:2]
 
 
 class _Handler(BaseHTTPRequestHandler):
