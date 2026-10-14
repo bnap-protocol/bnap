@@ -197,7 +197,7 @@ These are the NUT-23 quote fields a client needs, so it can pay from the 402 wit
 - `bnap:notes` is binding class S, so it MAY appear in route-scope and in exact-scope offers (draft-00 4.3), and its refund is atomic, so it MAY appear in metered offers (draft-00 7).
 - `fund_quote` MUST appear only in exact-scope offers, because a route-scope offer is the same for every client (draft-00 5.1) (provisional).
 - A gate MAY send such an exact-scope notes offer, made for one request to carry a `fund_quote` (8.2), on a route that the manifest lists with `"scope": "route"`, next to that route's route-scope offer (provisional). Draft-00 4.3 allows a class S scheme in an exact-scope offer. This document reads the rule of draft-00 9.1, that such a route "gets route-scope offers for its class S and A schemes", as the route's default offer set, not as a ban on a per-request exact-scope offer (19.2).
-- A gate MUST NOT put a `fund_quote` in an offer for a route whose `require` sets `link-payment` to `unlinkable`, because a credential that redeems it is linkable to the payment (section 14) (provisional).
+- A gate MUST NOT put a `fund_quote` in an offer for a route whose `require` sets `link-payment` to `unlinkable`, because a credential that redeems it is linkable to the payment (section 14) (provisional). On such a route it also puts no `max_fund` in the notes pay entry, and admits no credential that redeems a quote, whichever offer the quote came from (8.4) (provisional).
 - A gate MAY cache an exact-scope offer that carries a `fund_quote` as it caches offers with natives, so that the client can send `offer_id`; when it does not, the client sends the offer inline (provisional; draft-00 5.1 names only offers with natives).
 - The notes pay entry carries no native record: `bnap:notes` defines no native artifact.
 - **Replay horizon.** Draft-00 4.4 checks expiry before the commit looks for a replay (draft-00 6.3, 6.4), so a replay sent after the offer has expired is STALE even when its outcome exists. Without a limit on late admissions, a credential committed shortly before expiry could never collect its timeout refund (7.5) or a missed change. The **deadline** of a notes entry is the earlier of the offer's `expires` and the entry's `quote_expires`; its **admission cutoff** is that deadline minus `pending_timeout` minus 60 seconds. A gate that lists `bnap:notes` (provisional):
@@ -335,7 +335,7 @@ A gate that receives `BNAP-Fund` on a route whose notes pay entry carries `max_f
 - otherwise creates a NUT-23 BOLT11 quote for `min(amount, max_fund)` sat, locked to `pubkey` (NUT-20), with a quote ID of at most 64 bytes, and puts it in the `fund_quote` of an exact-scope offer for this request (5.3, 5.4), also on a route listed with `"scope": "route"` (5.4). It MAY also send its route-scope offer, without the quote, in the same 402;
 - MUST create at most one quote per offer nonce and MUST rate-limit quote creation per client address (provisional, following DECISIONS row 24 for native challenges), and SHOULD bound the open, unpaid quotes per address;
 - MUST NOT create a quote for a request without `BNAP-Fund`. A scraper gets an offer, never an invoice;
-- SHOULD set the quote's `expiry` no later than the admission cutoff of the offer that carries it (5.4), so that a client that pays in time can still use that offer (provisional). A quote paid later is not lost: it is redeemed with any other notes offer, or minted (8.4, 8.5);
+- SHOULD set the quote's `expiry` no later than the admission cutoff of the offer that carries it (5.4), so that a client that pays in time can still use that offer (provisional). A quote paid later is not lost: it is redeemed with any other notes offer that admits a funded credential, or minted (8.4, 8.5);
 - MAY decline amounts below a minimum top-up of its choosing, in which case it sends no quote. v0.4 suggested `max(4 × price, 21)` sat, because the operator's inbound liquidity, not routing, is the real cost of a small payment.
 
 ### 8.3 Paying the quote
@@ -344,11 +344,11 @@ Before paying, a client MUST check that the offer passes draft-00 4.4, that `pub
 
 ### 8.4 Redeeming the quote in a credential
 
-The client puts the quote ID in the body's `fund` and signs the Digest with the quote key as `fund_sig`. The quote may be redeemed with any offer that lists `bnap:notes`, not only the one that carried it, and alongside notes or alone. It adds its amount to the value with no input fee (6.3). Verification checks the quote (6.2, step 4) and returns its payment as a rail reference (6.4), and the socket commits the RailId in the same transaction as the notes' UseIds (draft-00 6.3).
+The client puts the quote ID in the body's `fund` and signs the Digest with the quote key as `fund_sig`. The quote may be redeemed with any offer that lists `bnap:notes`, not only the one that carried it, and alongside notes or alone, except under an offer for a route whose `require` sets `link-payment` to `unlinkable`. Such a credential is linkable to its payment (section 14), so on such a route the gate MUST reject a notes credential whose `verify` returns a rail reference, which it does exactly when the body holds `fund` (6.4), with POLICY (8), after verification and before commit (provisional). Nothing is consumed and the quote stays mintable through NUT-04, as for any failure before commit. It adds its amount to the value with no input fee (6.3). Verification checks the quote (6.2, step 4) and returns its payment as a rail reference (6.4), and the socket commits the RailId in the same transaction as the notes' UseIds (draft-00 6.3).
 
 If the request fails before commit, nothing is consumed and the quote stays mintable through NUT-04. After commit the quote counts as issued, whatever the outcome: on OK the change comes back as notes, and on FAILED the whole value, the quote's amount included, comes back as notes (7.2).
 
-A credential that redeems a quote links that one action to the Lightning payment. Notes received as change are unlinkable. A client that needs every action unlinkable buys credit through NUT-04 first and spends only notes.
+A credential that redeems a quote links that one action to the Lightning payment. Notes received as change are unlinkable. A client that needs every action unlinkable buys credit through NUT-04 first and spends only notes. A route that requires `link-payment = unlinkable` holds every client to this: its gate offers no quote there (5.4) and admits no funded credential.
 
 ### 8.5 Minting through NUT-04
 
@@ -511,7 +511,7 @@ The property vector, weakest to strongest as the overview orders each property:
 | use | single | Each `Y` admits one action |
 | binding | S | The witness signs the Digest: offer, chosen schemes, extensions, bodies and TLS binding |
 | theft | key-witnessed | A note copied from a log or a proxy is useless without `k_n` |
-| link-payment | unlinkable | Notes are unlinkable from the purchase that funded them. A credential that redeems a fund quote is linkable to that payment (8.4), and the first action after a purchase can be correlated by timing |
+| link-payment | unlinkable | Notes are unlinkable from the purchase that funded them. A credential that redeems a fund quote is linkable to that payment, so a gate never admits one on a route that requires `link-payment = unlinkable` (8.4). The first action after a purchase can still be correlated by timing |
 | link-actions | unlinkable | Blinding; one `K` per note; the canonical ladder (6.3) |
 | issuer | self-issued | The gate accepts only its own keysets |
 | verify | offline | A signer check and signature checks; the rail is asked only for a fund quote |
@@ -565,6 +565,7 @@ The socket's considerations (draft-00 section 12) apply. These are the scheme's 
 | Wallet fingerprinting | Powers of two, the canonical ladder, one `K` per note |
 | Linking two actions through a reused output | Counters are never reused (12.1) |
 | Lost device | Seed recovery through NUT-13, NUT-09 and NUT-07 (section 12) |
+| A linkable funded credential admitted on a route that requires unlinkable payment | No quote and no `max_fund` in that route's offers (5.4), and POLICY for every credential that redeems a quote there, whichever offer the quote came from (8.4) |
 | Invoice minting as denial of service | Funding only on `BNAP-Fund`, capped, one quote per offer nonce, rate-limited per address (8.2) |
 | Change withheld or miscounted | The deterministic selection (7.2), checked by the client against the signed Response |
 | A timeout refund or missed change lost because the offer expired | The admission cutoff (5.4) and prompt replays (7.5) |
@@ -778,3 +779,4 @@ Each of these is marked "(provisional)" where it is made, and each is open to ow
 | P33 | 2.1 | A non-minimal BigSize or `tu64` inside a notes body or witness is BAD\_CREDENTIAL with `bnap:notes/NON_CANONICAL`, not the socket MALFORMED that draft-00 section 2 names |
 | P34 | 5.4, 8.2 | On a route listed with `"scope": "route"`, a gate MAY also send a per-request exact-scope notes offer that carries a `fund_quote`; draft-00 9.1 is read as the route's default offer set |
 | P35 | 7.1 | A FAILED Response to a metered offer reports `metered_units` 0, which draft-00 8.1 leaves open; the Response vectors of 18.2 item 6 use it |
+| P36 | 5.4, 8.4 | On a route whose `require` sets `link-payment = unlinkable`, the notes pay entry carries no `max_fund`, and the gate rejects a credential that redeems a fund quote with POLICY after verification and before commit |

@@ -103,7 +103,7 @@ Before it pays, the wallet **MUST** run the checks of [notes][notes] section 8.3
 
 Whichever happens first wins: the issuer records the payment once, and the other path is refused. A request that fails before the commit leaves the quote mintable.
 
-A credential that redeems a quote is linkable to that Lightning payment. Change proofs are not. A wallet that wants every request unlinkable mints first and pays only with proofs.
+A credential that redeems a quote is linkable to that Lightning payment. Change proofs are not. A wallet that wants every request unlinkable mints first and pays only with proofs. A server whose route requires unlinkable payments offers no quote on that route, and refuses a credential that redeems one, wherever the quote came from, with code 8 (`POLICY`, status 403) before the commit, so the quote stays mintable ([notes][notes], section 8.4).
 
 ## Issuer rules
 
