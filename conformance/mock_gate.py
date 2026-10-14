@@ -22,6 +22,8 @@ Faults:
   no-dpop               no route offers an httpauth:DPoP waive (not a fault in
                         itself: without a payer the runner can then reach no
                         admission, and must say so instead of passing)
+  quote-expires-over    exact-scope pay entries carry quote_expires after expires
+  native-in-route       route-scope offers carry a native record
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -49,7 +51,8 @@ from bnap_conf import http as hp, pricing as pr, store as st, dpop, lightning as
 from bnap_conf.codec import BnapError, b64u, b64u_decode  # noqa: E402
 from bnap_conf.crypto import schnorr_pub, key_from_label  # noqa: E402
 
-FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "bad-ack", "no-dpop")
+FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "bad-ack", "no-dpop",
+          "quote-expires-over", "native-in-route")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -188,11 +191,16 @@ class MockGate:
             for s in route["pay"]:
                 if REG.binding(s) in ("S", "A"):
                     pay.append(of.pay_entry(s, amount, unit, rate=500 if route.get("metered") else None))
+            native = []
+            if "native-in-route" in self.faults and pay:
+                inv = ln.encode_bolt11(payment_hash=os.urandom(32), description_hash=bytes(32), amount_sat=amount,
+                                       timestamp=now)
+                native = [of.native_entry(0, "bolt11", inv.encode())]
             fields = of.offer_fields(scope=hp.route_scope(self.origin, route["id"]), route_scope=True,
                                      metered=bool(route.get("metered")), expires=now + ROUTE_TTL,
                                      info=self.origin + "/.well-known/bnap", offer_key=schnorr_pub(self.offer_sk),
                                      nonce=os.urandom(16), pay=pay, attest=self._attest_entries(route, ("S", "A")),
-                                     extra=[(3000000001 + 2 * (now % 400), os.urandom(2))])
+                                     native=native, extra=[(3000000001 + 2 * (now % 400), os.urandom(2))])
             raw = of.sign_offer(fields, self.offer_sk, self.mac_key)
             oid = of.offer_id_of(raw)
             self.cache[oid] = raw
@@ -206,8 +214,9 @@ class MockGate:
         pay_schemes = [s for s in route["pay"] if not (route_mode and REG.binding(s) in ("S", "A"))]
         if not pay_schemes:
             return None, []
-        pay = [of.pay_entry(s, amount, unit) for s in pay_schemes]
         ttl = self.short_ttl if route["id"] == "short" else EXACT_TTL
+        qe = now + ttl + 30 if "quote-expires-over" in self.faults else None
+        pay = [of.pay_entry(s, amount, unit, quote_expires=qe) for s in pay_schemes]
         attest = self._attest_entries(route, ("S", "A", "O"))
         base = of.offer_fields(scope=scope, expires=now + ttl, info=self.origin + "/.well-known/bnap",
                                offer_key=schnorr_pub(self.offer_sk), nonce=os.urandom(16), pay=pay,
@@ -600,6 +609,8 @@ FAULT_CASES = {
     "no-replay": "REPLAY-RECORDED",
     "wrong-scope-accepted": "ERR-WRONG-SCOPE-EXACT",
     "bad-ack": "RCPT-ACK",
+    "quote-expires-over": "OFR-PARSE",
+    "native-in-route": "OFR-ROUTE-CLASSES",
 }
 
 # Fault sets under which no admission is reachable without a payer: the runner

@@ -223,6 +223,24 @@ class Exchange:
         return s
 
 
+class OfferProblem:
+    """An offer challenge the runner could not use.
+
+    stage "challenge": the WWW-Authenticate syntax, a missing offer parameter or
+    bad base64url (OFR-CHALLENGE). stage "parse": the bytes decoded but the
+    offer breaks a 2 or 4.1 rule (OFR-PARSE); raw holds those bytes.
+    """
+
+    def __init__(self, stage, code, reason, raw=None):
+        self.stage = stage
+        self.code = code
+        self.reason = reason
+        self.raw = raw
+
+    def __str__(self):
+        return f"{self.code} {self.reason}".strip()
+
+
 class Probe:
     def __init__(self, route, req, ex):
         self.route = route
@@ -231,31 +249,39 @@ class Probe:
         self.offers = []
         self.offer_errors = []
         self.challenges = []
+        self.bnap_values = 0
         if ex.res is None:
             return
         for v in ex.res.headers_all("WWW-Authenticate"):
             try:
                 self.challenges.extend(hp.parse_challenges(v))
             except ValueError as e:
-                self.offer_errors.append(("challenge-syntax", str(e)))
+                self.offer_errors.append(OfferProblem("challenge", "challenge-syntax", str(e)))
         for ch in self.challenges:
             if ch.scheme.lower() != "bnap":
                 continue
             val = ch.params.get("offer")
             if val is None:
-                self.offer_errors.append(("no-offer-param", ch.raw[:60]))
+                self.offer_errors.append(OfferProblem("challenge", "no-offer-param", ch.raw[:60]))
                 continue
             try:
                 raw = b64u_decode(val)
             except BnapError as e:
-                self.offer_errors.append(("offer-base64url", e.reason))
+                self.offer_errors.append(OfferProblem("challenge", "offer-base64url", e.reason))
                 continue
+            self.bnap_values += 1
             try:
                 o = of.parse_offer(raw, 1 << 20)
             except BnapError as e:
-                self.offer_errors.append((e.code, e.reason))
+                self.offer_errors.append(OfferProblem("parse", e.code, e.reason, raw))
                 continue
             self.offers.append((raw, o))
+
+    def challenge_errors(self):
+        return [e for e in self.offer_errors if e.stage == "challenge"]
+
+    def parse_errors(self):
+        return [e for e in self.offer_errors if e.stage == "parse"]
 
     def natives(self):
         return [c for c in self.challenges if c.scheme.lower() != "bnap"]
@@ -651,9 +677,10 @@ def ofr_402(ctx):
 def ofr_challenge(ctx):
     probs = []
     for p in ctx.all_probes():
-        if p.offer_errors:
-            probs.append(f"{p.route.id}: {p.offer_errors[0]}")
-        elif not p.offers:
+        ce = p.challenge_errors()
+        if ce:
+            probs.append(f"{p.route.id}: {ce[0]}")
+        elif not p.bnap_values:
             probs.append(f"{p.route.id}: no BNAP offer")
     check(not probs, "; ".join(probs))
 
@@ -661,10 +688,18 @@ def ofr_challenge(ctx):
 @case("OFR-PARSE", "4.1", "MUST", "every offer parses fully and fits max_offer")
 def ofr_parse(ctx):
     lim = ctx.limits()["max_offer"]
-
-    def f(p, raw, o):
-        check(len(raw) <= lim, f"{len(raw)} bytes > max_offer {lim}")
-    each_offer(ctx, f)
+    probs, n = [], 0
+    for p in ctx.all_probes():
+        for e in p.parse_errors():
+            n += 1
+            probs.append(f"{p.route.id}: an offer does not parse: {e}")
+        for raw, o in p.offers:
+            n += 1
+            if len(raw) > lim:
+                probs.append(f"{p.route.id}: {len(raw)} bytes > max_offer {lim}")
+    if n == 0:
+        raise Skip("no offers")
+    check(not probs, "; ".join(probs[:5]) + (f" (+{len(probs) - 5} more)" if len(probs) > 5 else ""))
 
 
 @case("OFR-MAC", "4.1", "MUST", "offers in a 402 carry mac (only offers published in advance omit it)")
@@ -727,16 +762,35 @@ def ofr_headers(ctx):
     each_offer(ctx, f)
 
 
+def _route_offer_with_native(raw):
+    """True when bytes that failed to parse as an Offer still carry route_scope and a native record."""
+    try:
+        types = {r.type for r in codec.parse_stream(raw)}
+    except BnapError:
+        return False
+    return 4 in types and of.NATIVE in types
+
+
 @case("OFR-ROUTE-CLASSES", "4.3", "MUST", "route-scope offers list only class S and A schemes and no native")
 def ofr_route_classes(ctx):
-    def f(p, raw, o):
-        if not o.route_scope:
-            return
-        check(not o.native, "native record in a route-scope offer")
-        for e in list(o.pay) + list(o.attest):
-            c = ctx.registry.binding(e.scheme)
-            check(c in ("S", "A"), f"{e.scheme} (class {c}) in a route-scope offer")
-    each_offer(ctx, f)
+    probs, n = [], 0
+    for p in ctx.all_probes():
+        # parse_offer refuses a route-scope offer with a native record (MALFORMED),
+        # so such an offer shows up here, among the offers that did not parse.
+        for e in p.parse_errors():
+            if _route_offer_with_native(e.raw):
+                probs.append(f"{p.route.id}: native record in a route-scope offer ({e})")
+        for raw, o in p.offers:
+            n += 1
+            if not o.route_scope:
+                continue
+            for e in list(o.pay) + list(o.attest):
+                c = ctx.registry.binding(e.scheme)
+                if c not in ("S", "A"):
+                    probs.append(f"{p.route.id}: {e.scheme} (class {c}) in a route-scope offer")
+    if n == 0 and not probs:
+        raise Skip("no offers")
+    check(not probs, "; ".join(probs[:5]) + (f" (+{len(probs) - 5} more)" if len(probs) > 5 else ""))
 
 
 @case("OFR-CLASS-RULES", "7", "MUST", "no gate-built offer breaks the class, metering or quota rules")
