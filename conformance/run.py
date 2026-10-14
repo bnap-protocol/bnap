@@ -1687,6 +1687,11 @@ def att_pending(ctx):
     check(third.replayed, "after completion the credential is not a replay")
 
 
+def _wait_hint(ctx):
+    """What would let an expiry case run: a short role if none was given, else a longer wait."""
+    return "raise --max-wait" if "short" in ctx.roles else "give --role short=ROUTE_ID or raise --max-wait"
+
+
 @case("ATT-STALE", "4.4", "MUST", "an expired offer is STALE with a fresh offer; 60 s of skew are allowed",
       profiles=WITH_CREDENTIALS, deferred=True)
 def att_stale(ctx):
@@ -1702,7 +1707,7 @@ def att_stale(ctx):
     wait = o.expires + 62 - ctx.now()
     if wait > ctx.args.max_wait:
         raise Skip(f"the shortest offer expires in {o.expires - ctx.now()} s; --max-wait {ctx.args.max_wait} "
-                   f"is below the {wait} s this needs (give --role short=ROUTE_ID or raise --max-wait)")
+                   f"is below the {wait} s this needs ({_wait_hint(ctx)})")
     t_skew = o.expires + 5 - ctx.now()
     if t_skew > 0:
         time.sleep(t_skew)
@@ -1735,7 +1740,7 @@ def err_expiry_before_plug(ctx):
     wait = o.expires + 62 - ctx.now()
     if wait > ctx.args.max_wait:
         raise Skip(f"the shortest offer expires in {o.expires - ctx.now()} s; --max-wait {ctx.args.max_wait} "
-                   f"is below the {wait} s this needs (give --role short=ROUTE_ID or raise --max-wait)")
+                   f"is below the {wait} s this needs ({_wait_hint(ctx)})")
     time.sleep(max(0, wait))
     e = _plug_entry(ctx, o)
     cred = cr.build_credential(offer=raw, pay=cr.SchemeItem(e.scheme, b"conformance garbage", None))

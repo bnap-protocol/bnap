@@ -123,6 +123,16 @@ class PayerAndProfiles(unittest.TestCase):
         self.assertEqual(rr.results[0].status, "skip")
         self.assertIn("max-spend-sat", rr.results[0].detail)
 
+    def test_wait_hint_names_only_what_is_missing(self):
+        only = ["--max-wait", "0", "--only", "ATT-STALE,ERR-EXPIRY-BEFORE-PLUG"]
+        for roles, want_role in ((True, False), (False, True)):
+            with self.subTest(roles=roles):
+                rr = run.run(mock_gate.runner_args(self.gate, extra=only, roles=roles), quiet=True)
+                for r in rr.results:
+                    self.assertEqual(r.status, "skip", r.detail)
+                    self.assertIn("raise --max-wait", r.detail)
+                    self.assertEqual("--role short" in r.detail, want_role, r.detail)
+
     def test_client_profile_sends_no_credential(self):
         args = mock_gate.runner_args(self.gate, extra=["--max-wait", "0"])
         args[args.index("--profile") + 1] = "client"
