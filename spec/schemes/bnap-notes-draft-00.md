@@ -141,8 +141,8 @@ A wallet MAY store notes as ordinary Cashu proofs, for example in a NUT-00 V4 to
 
 ### 4.2 Rules beyond Cashu
 
-- **Spends need the key.** An issuer MUST accept its notes only inside a `bnap:notes` credential with a valid witness, never through a NUT-03 swap or a NUT-05 melt: without the witness rule, `hex(K)` reads to Cashu as an unlocked secret.
-- **Key isolation.** BNAP keysets MUST NOT be served by a mint that accepts plain swaps or melts for them. The issuer MUST refuse every NUT-03 and NUT-05 request whose inputs belong to a BNAP keyset, and SHOULD mark NUT-05 as disabled in its NUT-06 info. A BNAP key never appears in any other keyset. NUT-04 minting (8.5), NUT-07 state checks and NUT-09 restore are served as section 12 says.
+- **Spends need the key.** An issuer MUST accept its notes only with a valid witness by each note's `K`: inside a `bnap:notes` credential, or in the witnessed melt of a withdrawal extension (section 16). It never accepts them through a NUT-03 swap or a plain NUT-05 melt: without the witness rule, `hex(K)` reads to Cashu as an unlocked secret.
+- **Key isolation.** BNAP keysets MUST NOT be served by a mint that accepts plain swaps or melts for them. The issuer MUST refuse every NUT-03 request whose inputs belong to a BNAP keyset, and every NUT-05 request whose inputs do, unless it implements a withdrawal extension (section 16) and the melt carries a notes witness for every input. An issuer without such an extension SHOULD mark NUT-05 as disabled in its NUT-06 info. A BNAP key never appears in any other keyset. NUT-04 minting (8.5), NUT-07 state checks and NUT-09 restore are served as section 12 says.
 - **Keyset IDs.** Bodies, parameters and derivation all use the full 33-byte keyset ID. The 8-byte short ID never appears in a notes body (provisional; v0.4 allowed it on the wire).
 - **Unit.** Every BNAP keyset has unit `sat`, and the notes pay entry has unit `sat`.
 - **Final expiry.** Every BNAP keyset MUST publish a `final_expiry` (NUT-02) (provisional; without one, draft-00 6.2 would keep its spend records forever).
@@ -542,7 +542,7 @@ A notes wallet SHOULD send the canonical ladder (6.3), send `offer_id` instead o
 
 ## 16. Withdrawal
 
-Withdrawal (v0.4's BNAP-W) is not part of this document. An issuer that offers no withdrawal extension MUST refuse NUT-05 melts of BNAP notes (4.2). An operator that enables one MUST, as v0.4 required, write spend records synchronously to durable, replicated storage before answering, cap withdrawals per epoch and per request, pay out only through a melt that carries notes witnesses, and keep the issuer key in a separate signer process. Paying out to arbitrary invoices moves an operator from merchant toward money transmitter, so withdrawal needs legal review in each jurisdiction.
+Withdrawal (v0.4's BNAP-W) is not part of this document. An issuer that offers no withdrawal extension MUST refuse NUT-05 melts of BNAP notes (4.2). An operator that enables one MUST, as v0.4 required, write spend records synchronously to durable, replicated storage before answering, cap withdrawals per epoch and per request, pay out only through a melt that carries a notes witness for every input (4.2), and keep the issuer key in a separate signer process. Paying out to arbitrary invoices moves an operator from merchant toward money transmitter, so withdrawal needs legal review in each jurisdiction.
 
 ## 17. Security and privacy considerations
 

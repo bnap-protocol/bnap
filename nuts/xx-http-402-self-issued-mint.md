@@ -111,7 +111,7 @@ The issuer:
 
 - issues only key-secret keysets ([key-secret proofs][xx-keys]) with unit `sat`, version `01` keyset IDs and a `final_expiry`;
 - serves [NUT-01][01], [NUT-02][02], [NUT-04][04] with [NUT-20][20] required, [NUT-06][06], [NUT-07][07], [NUT-09][09], [NUT-12][12] and [NUT-23][23];
-- refuses [NUT-03][03] swaps and [NUT-05][05] melts of its keysets' proofs, unless it implements a withdrawal extension that requires witnesses;
+- refuses every [NUT-03][03] swap of its keysets' proofs, and every [NUT-05][05] melt of them unless it implements a withdrawal extension whose melts carry a witness for every proof ([notes][notes], sections 4.2 and 16);
 - answers [NUT-07][07] from the server's record of committed `Y` values, and [NUT-09][09] from its record of signed outputs. It keeps both records until 60 seconds after the keyset's final expiry, because the socket allows 60 seconds of clock skew on every expiry check and a proof still verifies until then ([notes][notes], section 10);
 - publishes a keyset at least 30 days before it signs with it, and always keeps a standby keyset published, so that a compromised keyset can be replaced at once.
 
