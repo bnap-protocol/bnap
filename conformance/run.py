@@ -1542,6 +1542,36 @@ def att_stale(ctx):
     cred2, _, _ = ctx.dpop_credential(p.req, raw, o)
     expect_error(ctx.request(p.req, credential=cred2, label="62 s after expiry"), "STALE", fresh=True)
 
+def _plug_entry(ctx, o):
+    """The first pay entry a scheme plug verifies against the request: class O or A."""
+    return next((e for e in o.pay if ctx.registry.binding(e.scheme) in ("O", "A")), None)
+
+
+@case("ERR-EXPIRY-BEFORE-PLUG", "4.4", "MUST", "expiry is checked before any plug: an expired offer with a garbage "
+      "value body is STALE, not BAD_CREDENTIAL", profiles=WITH_CREDENTIALS, deferred=True)
+def err_expiry_before_plug(ctx):
+    routes = [ctx.role_route("short")] if "short" in ctx.roles else ctx.plain_routes()
+    best = None
+    for r in routes:
+        p = ctx.probe(r, fresh=True)
+        for raw, o in p.offers:
+            if not o.route_scope and _plug_entry(ctx, o) and (best is None or o.expires < best[2].expires):
+                best = (p, raw, o)
+    if best is None:
+        raise Skip("no exact-scope offer with a class O or A pay entry")
+    p, raw, o = best
+    wait = o.expires + 62 - ctx.now()
+    if wait > ctx.args.max_wait:
+        raise Skip(f"the shortest offer expires in {o.expires - ctx.now()} s; --max-wait {ctx.args.max_wait} "
+                   f"is below the {wait} s this needs (give --role short=ROUTE_ID or raise --max-wait)")
+    time.sleep(max(0, wait))
+    e = _plug_entry(ctx, o)
+    cred = cr.build_credential(offer=raw, pay=cr.SchemeItem(e.scheme, b"conformance garbage", None))
+    ex = ctx.request(p.req, credential=cred, label="garbage body under an expired offer")
+    check(ex.code != "BAD_CREDENTIAL", f"BAD_CREDENTIAL from {e.scheme} for an offer expired 62 s ago: the scheme "
+          "plug ran before the expiry check (4.4 step 4)")
+    expect_error(ex, "STALE", fresh=True)
+
 # ================================================================ 10 gateway behaviour
 
 

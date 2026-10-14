@@ -28,6 +28,8 @@ Faults:
   reusable-window       replay_window drops to 120 s and the 6.1 check is gone, so
                         DPoP-only credentials are admitted under offers that
                         outlive their outcome record
+  late-expiry           the scheme plugs run before the expiry check, and STALE
+                        is raised only afterwards (4.4 order broken)
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -56,7 +58,7 @@ from bnap_conf.codec import BnapError, b64u, b64u_decode  # noqa: E402
 from bnap_conf.crypto import schnorr_pub, key_from_label  # noqa: E402
 
 FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "bad-ack", "no-dpop",
-          "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window")
+          "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window", "late-expiry")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -374,8 +376,9 @@ class MockGate:
                     act = peek.scope
             except BnapError:
                 pass
+        check_now = self._before_expiry(c, now) if "late-expiry" in self.faults else now
         try:
-            o = of.gate_check_offer(state, now=now, action_scope=act, route_scope=rscope, offer_raw=c.offer,
+            o = of.gate_check_offer(state, now=check_now, action_scope=act, route_scope=rscope, offer_raw=c.offer,
                                     offer_id=c.offer_id_ref, pay_scheme=c.pay.scheme if c.pay else None,
                                     attest_schemes=c.attest_schemes)
         except BnapError as e:
@@ -419,6 +422,8 @@ class MockGate:
                 except (dpop.DpopReject, BnapError):
                     pass
             attests.append(entry)
+        if "late-expiry" in self.faults and now > o.expires + of.SKEW:
+            raise GateError("STALE", "expired (checked after the plugs)")
         entry = o.pay_entry(c.pay.scheme) if c.pay else None
         adm = pr.admit(attests, amount=entry.amount if entry else None, value=value)
         if not adm.ok:
@@ -430,6 +435,14 @@ class MockGate:
         rk = cr.replay_key(ctx, c.pay_body, c.attest_bodies, ids)
         return self._commit_and_run(route, target, headers, body, o, rk, dg, singles, counters, attests, adm,
                                     entry, now)
+
+    def _before_expiry(self, c, now):
+        """For the late-expiry fault: a clock at which the offer has not yet expired."""
+        raw = c.offer if c.offer is not None else self.cache.get(c.offer_id_ref)
+        try:
+            return min(now, of.parse_offer(raw).expires)
+        except (BnapError, TypeError):
+            return now
 
     def _verify_dpop(self, body, ctx, method, htu, now):
         return dpop.verify_body(body, context=ctx, method=method, htu=htu, now=now,
@@ -629,6 +642,7 @@ FAULT_CASES = {
     "native-in-route": "OFR-ROUTE-CLASSES",
     "ext-ignored": "ATT-EXT-BOUND",
     "reusable-window": "USE-REUSABLE-WINDOW",
+    "late-expiry": "ERR-EXPIRY-BEFORE-PLUG",
 }
 
 # Fault sets under which no admission is reachable without a payer: the runner
