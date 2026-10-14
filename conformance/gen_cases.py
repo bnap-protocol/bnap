@@ -1511,8 +1511,10 @@ def gen_manifest():
                                   ("http://api.example/.well-known/bnap", None, NOW, "invalid", "plain HTTP"),
                                   ("https://api.example/.well-known/bnap", NOW - 299, NOW, "invalid", "299 s after the last fetch"),
                                   ("https://api.example/.well-known/bnap", NOW - 300, NOW, "valid", "300 s after the last fetch")):
+        ok, why = mf.may_fetch(url, last, at)
+        must(ok == (res == "valid"), "fetch " + c)
         g.add(c, {"url": url, "last_fetch": last, "now": at}, res, error=None if res == "valid" else "CLIENT_REJECT",
-              flags=["Valid"] if res == "valid" else ["Fetch"])
+              reason=why, flags=["Valid"] if res == "valid" else ["Fetch"])
     return cf
 
 # ---------------------------------------------------------------- http-scope.json
@@ -1762,43 +1764,7 @@ def gen_pricing():
 
 
 def run_trace(steps, replay_window=86400, pending_timeout=300):
-    s = st.UseStore(replay_window, pending_timeout)
-    out = []
-    for step in steps:
-        op = step["op"]
-        if op == "commit":
-            r = s.commit(step["rk"], step.get("singles", []), [tuple(c) for c in step.get("counters", [])], step["at"])
-            e = {"result": r.kind}
-            if r.kind == "Replay":
-                e["status"] = r.outcome.status
-                e["gate"] = "PENDING" if r.outcome.status == "PENDING" else (
-                    "replay-with-response" if r.outcome.response is not None else "replay-receipt-only")
-                if r.outcome.status != "PENDING":
-                    e["replayed"] = True
-                    e["scheme_result"] = r.outcome.scheme_result
-            elif r.kind == "New":
-                e["gate"] = "run-action"
-            else:
-                e["gate"] = r.kind
-            out.append(e)
-        elif op == "settle":
-            ok = s.settle(step["rk"], step["status"], step["at"], step.get("charged", 0), step.get("scheme_result"),
-                          step.get("response"))
-            out.append({"settled": ok})
-        elif op == "get":
-            o = s.get(step["rk"], step["at"])
-            out.append({"status": o.status if o else None})
-        elif op == "purge":
-            s.purge(step["at"])
-            out.append({})
-        elif op == "store":
-            s.available = step["available"]
-            out.append({})
-        elif op == "counter":
-            out.append({"value": s.counter_value(step["key"])})
-        else:
-            raise SystemExit("unknown op " + op)
-    return out
+    return st.apply_trace(steps, replay_window, pending_timeout)
 
 
 def gen_outcomes():

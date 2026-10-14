@@ -320,6 +320,15 @@ class Pin:
                    d["keys"], d["until"])
 
 
+def may_fetch(url, last_fetch, now):
+    """9.3 fetch(): HTTPS only, at most once per 5 minutes. Return (ok, reason)."""
+    if not url.startswith("https://"):
+        return False, "https-only"
+    if last_fetch is not None and now - last_fetch < REFETCH_MIN:
+        return False, "fetched-within-5-minutes"
+    return True, None
+
+
 def fetch_accept(raw, *, origin, now, pin=None):
     """The fetch(origin) rule of 9.3 after the GET. Return the new Pin or raise."""
     m = parse_json_strict(raw)

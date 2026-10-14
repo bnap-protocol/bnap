@@ -1554,7 +1554,8 @@
       "now": 1791700100
      },
      "result": "invalid",
-     "error": "CLIENT_REJECT"
+     "error": "CLIENT_REJECT",
+     "reason": "https-only"
     },
     {
      "tcId": 61,
@@ -1571,7 +1572,8 @@
       "now": 1791700100
      },
      "result": "invalid",
-     "error": "CLIENT_REJECT"
+     "error": "CLIENT_REJECT",
+     "reason": "fetched-within-5-minutes"
     },
     {
      "tcId": 62,

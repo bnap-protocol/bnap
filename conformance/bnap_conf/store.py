@@ -114,3 +114,44 @@ class UseStore:
     def counter_value(self, key):
         with self.lock:
             return self.counter.get(key, 0)
+
+
+def apply_trace(steps, replay_window=86400, pending_timeout=300):
+    """Run a vectors/cases/outcomes.json trace; return one expect dict per step."""
+    s = UseStore(replay_window, pending_timeout)
+    out = []
+    for step in steps:
+        op = step["op"]
+        if op == "commit":
+            r = s.commit(step["rk"], step.get("singles", []), [tuple(c) for c in step.get("counters", [])], step["at"])
+            e = {"result": r.kind}
+            if r.kind == "Replay":
+                e["status"] = r.outcome.status
+                e["gate"] = "PENDING" if r.outcome.status == PENDING else (
+                    "replay-with-response" if r.outcome.response is not None else "replay-receipt-only")
+                if r.outcome.status != PENDING:
+                    e["replayed"] = True
+                    e["scheme_result"] = r.outcome.scheme_result
+            elif r.kind == "New":
+                e["gate"] = "run-action"
+            else:
+                e["gate"] = r.kind
+            out.append(e)
+        elif op == "settle":
+            ok = s.settle(step["rk"], step["status"], step["at"], step.get("charged", 0), step.get("scheme_result"),
+                          step.get("response"))
+            out.append({"settled": ok})
+        elif op == "get":
+            o = s.get(step["rk"], step["at"])
+            out.append({"status": o.status if o else None})
+        elif op == "purge":
+            s.purge(step["at"])
+            out.append({})
+        elif op == "store":
+            s.available = step["available"]
+            out.append({})
+        elif op == "counter":
+            out.append({"value": s.counter_value(step["key"])})
+        else:
+            raise ValueError("unknown trace op " + op)
+    return out
