@@ -1724,8 +1724,9 @@ def _plug_entry(ctx, o):
     return next((e for e in o.pay if ctx.registry.binding(e.scheme) in ("O", "A")), None)
 
 
-@case("ERR-EXPIRY-BEFORE-PLUG", "4.4", "MUST", "expiry is checked before any plug: an expired offer with a garbage "
-      "value body is STALE, not BAD_CREDENTIAL", profiles=WITH_CREDENTIALS, deferred=True)
+@case("ERR-EXPIRY-BEFORE-PLUG", "4.4", "MUST", "expiry is checked before scope and before any plug: an expired "
+      "offer with a garbage value body is STALE, not BAD_CREDENTIAL, and sent with another request STALE, not "
+      "WRONG_SCOPE", profiles=WITH_CREDENTIALS, deferred=True)
 def err_expiry_before_plug(ctx):
     routes = [ctx.role_route("short")] if "short" in ctx.roles else ctx.plain_routes()
     best = None
@@ -1747,6 +1748,13 @@ def err_expiry_before_plug(ctx):
     ex = ctx.request(p.req, credential=cred, label="garbage body under an expired offer")
     check(ex.code != "BAD_CREDENTIAL", f"BAD_CREDENTIAL from {e.scheme} for an offer expired 62 s ago: the scheme "
           "plug ran before the expiry check (4.4 step 4)")
+    expect_error(ex, "STALE", fresh=True)
+    # The same expired offer with another request target: its exact scope no longer matches either,
+    # and 4.4 checks expiry (step 4) before scope (step 5).
+    other = p.req.with_target(p.req.target + ("&" if "?" in p.req.target else "?") + "conformance=expired-other")
+    ex = ctx.request(other, credential=cred, label="expired offer with another request")
+    check(ex.code != "WRONG_SCOPE", "WRONG_SCOPE for an offer expired 62 s ago sent with another request: the "
+          "scope check ran before the expiry check (4.4 steps 4 and 5)")
     expect_error(ex, "STALE", fresh=True)
 
 # ================================================================ 10 gateway behaviour

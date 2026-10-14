@@ -40,6 +40,7 @@ Faults:
   htu-from-host         the DPoP adapter builds htu from the raw Host field
   scope-from-host       the action scope is built from the Host field, not the manifest origin
   top-odd-in-digest     unknown odd records at the top level of the Credential enter the Digest
+  scope-before-expiry   the offer checks run authenticity, then scope, then expiry (4.4 order broken)
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -70,7 +71,8 @@ from bnap_conf.crypto import schnorr_pub, key_from_label  # noqa: E402
 FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "bad-ack", "no-dpop",
           "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window", "late-expiry",
           "nonce-reuse", "no-receipt-on-failed", "nested-odd-rejected", "nested-odd-in-rk", "nested-even-ignored",
-          "ext-even-ignored", "offer-size-unchecked", "htu-from-host", "scope-from-host", "top-odd-in-digest")
+          "ext-even-ignored", "offer-size-unchecked", "htu-from-host", "scope-from-host", "top-odd-in-digest",
+          "scope-before-expiry")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -413,13 +415,16 @@ class MockGate:
                     act = peek.scope
             except BnapError:
                 pass
-        check_now = self._before_expiry(c, now) if "late-expiry" in self.faults else now
+        late = {"late-expiry", "scope-before-expiry"} & self.faults
+        check_now = self._before_expiry(c, now) if late else now
         try:
             o = of.gate_check_offer(state, now=check_now, action_scope=act, route_scope=rscope, offer_raw=c.offer,
                                     offer_id=c.offer_id_ref, pay_scheme=c.pay.scheme if c.pay else None,
                                     attest_schemes=c.attest_schemes)
         except BnapError as e:
             raise GateError(e.code, e.reason) from None
+        if "scope-before-expiry" in self.faults and now > o.expires + of.SKEW:
+            raise GateError("STALE", "expired (checked after the scope)")
         if "ext-ignored" in self.faults:
             ctx = cr.context(o.offer_id, act, c.pay.scheme if c.pay else None, c.attest_schemes, None)
             dg = cr.digest(ctx, c.binding, c.pay_body, c.attest_bodies)
@@ -746,12 +751,13 @@ FAULT_CASES = {
     "htu-from-host": "SCOPE-MANIFEST-ORIGIN",
     "scope-from-host": "SCOPE-MANIFEST-ORIGIN",
     "top-odd-in-digest": "ATT-UNKNOWN-ODD",
+    "scope-before-expiry": "ERR-EXPIRY-BEFORE-PLUG",
 }
 
 # Faults that must also be caught when the runner is given no --role at all.
 NO_ROLE_FAULTS = ("no-receipt-on-failed",)
 # Faults only an expired offer shows: their runs keep the default --max-wait.
-WAIT_FAULTS = ("late-expiry",)
+WAIT_FAULTS = ("late-expiry", "scope-before-expiry")
 
 # Fault sets under which no admission is reachable without a payer: the runner
 # must not call the gate conformant. Expected verdict "incomplete", exit 3, and
