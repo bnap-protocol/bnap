@@ -153,7 +153,7 @@ These fill gaps in the spec. If the implementation under test chose differently,
 - **Trailers.** `http.client` drops HTTP trailers, so receipts sent as a `BNAP-Receipt` trailer are not read; event streams are.
 - **Other attestations** (Web Bot Auth, Privacy Pass, NIP-98, World ID) are not exercised: the runner can make only DPoP keys.
 - **Durability, crashes, rate limits and load, rotations over 30 days**: untestable black-box (see COVERAGE.md).
-- **Order among the 4.4 offer checks.** The runner shows that parse, authenticity, expiry and scope each come before any plug, but sends no pair of offer faults that would show version before authenticity or expiry before scope; only the vectors (`offer.json#GateOfferCheck`) fix that order.
+- **Order among the 4.4 offer checks.** The runner shows that parse, authenticity, expiry and scope each come before any plug, that version comes before authenticity (`ERR-OFFER-VERSION`) and expiry before scope (the second request of `ERR-EXPIRY-BEFORE-PLUG`); the order of the remaining pairs is fixed only by the vectors (`offer.json#GateOfferCheck`).
 - **Per-address mint limits** (DECISIONS row 24, section 12): one mint per offer nonce is checked; limits per client address need load from many addresses.
 - **Nested records in pay items.** The runner puts unknown odd records only inside attest items: an admissible pay item needs a payer. Unknown even records go into both.
 - **Host spellings.** `SCOPE-MANIFEST-ORIGIN` skips for a non-loopback IP address on an explicit port (it has no other spelling), and for a front that routes by Host and refuses the variant.
@@ -203,3 +203,25 @@ COVERAGE.md rows R-2-03, R-2-04, R-2-05, R-2-07, R-4.4-02a, R-5.1-04, A-5.1 and 
 | `--only` not conformant | `run.py --profile gateway --only OFR-402,MAN-SIG` against the served clean mock | `verdict: incomplete: 87 MUST cases not selected`, exit 3; `report.json` `must_not_selected` lists 87 |
 | COVERAGE.md complete | `coverage_check.py` | 48 normative sentences, every one mapped (33 named by vectors, 41 by runner cases); status: 29 covered, 9 partial, 3 client duty, 7 untestable black-box; 47 further rows checked |
 | Leak guard | `sh ops/leak-guard.sh` | clean (95 tracked files) |
+
+## Close-out round (cloud continuation)
+
+Items 1 to 10 of the brief were found resolved on the branch (commits `41b51fa` to `c66c332`) and re-verified: each named fault (`high-s-accepted`, `offer-version-masked`, `top-odd-in-digest`, `scope-before-expiry`, `cache-control-kept`) is in `FAULT_CASES` and caught by its case; the COVERAGE rows and skip reasons are restated; develop is merged (up to date); the `--max-wait` hint and the strict BOLT 11 decoder with `BNAP_EXPECT_*` are in place.
+
+**Spend-cap item (routing fees), fixed in `79a5b49`.** `run.py` reserves `--fee-limit-sat` (default 10) per payment on top of the invoice and refuses unless amount + limit fits in what `--max-spend-sat` leaves; it passes `BNAP_REMAINING_SAT` and `BNAP_FEE_LIMIT_SAT`; a payer may print `fee_msat=<N>` before the preimage, and the runner then counts amount + the fee rounded up to a sat (otherwise the whole limit stays counted, also when the payer fails), and fails a fee over the limit. AMP invoices (feature bits 30 or 31; the decoder now reads the 9 field) are refused by both the runner and `lncli-payer.sh`. The wrapper also refuses unless amount + limit <= remaining, pays with `--max_parts 1 --fee_limit <limit>`, and prints lnd's `fee_msat`. Decision: invoices with basic multi-part support (bits 16/17) are not refused, since nearly every lnd invoice sets them; a single-part payment is forced instead. Tests with crafted invoices in `tests/test_payer.py` (each failed before the fix).
+
+| Check | Result |
+| --- | --- |
+| `python3 -I -m unittest discover -s conformance/tests` | Ran 66 tests, OK |
+| `gen_cases.py` twice | identical bytes, vectors unchanged |
+| `coverage_check.py` | 48 sentences mapped: 29 covered, 10 partial, 3 client duty, 6 untestable |
+| `mock_gate.py selftest --with-payer` | selftest OK: clean all pass (incomplete only for `MAN-HTTPS`, `PAY-METERED`, `NOTES-VALUE`), all 24 faults caught, both incomplete plans exit 3 |
+| `ops/leak-guard.sh` | clean |
+
+**Checker verdict: PASS** (round 1, independent verifier: every item resolved, hostile fake lncli and crafted invoices refused or counted conservatively, no caparra code used).
+
+LOW findings (open):
+
+1. Fixed here: the Gaps entry on the 4.4 order was stale.
+2. `run.py` pays an invoice of any known network; there is no option to pin one (such as regtest only). A generic `--payer cmd:` wrapper that does not check the network could pay a mainnet invoice a hostile target hands out, up to the cap. `lncli-payer.sh` is safe (lnd's `decodepayreq` refuses other networks).
+3. `lncli-payer.sh` relies on `lncli payinvoice --json` printing one JSON object, as current lnd does; an lncli that streams in-flight updates makes the payment succeed and the parse fail, which fails safe (reported as payer failed, the reservation stays counted).
