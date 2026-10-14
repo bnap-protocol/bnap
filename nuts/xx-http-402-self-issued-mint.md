@@ -96,7 +96,7 @@ BNAP-Fund: amount=2100, pubkey="02c4..."
 
 `amount` is the most it will pay in sat, and `pubkey` a fresh compressed key for [NUT-20][20]. The server **MAY** then create a [NUT-23][23] BOLT11 mint quote for at most that amount, locked to `pubkey`, and put it in its offer ([notes][notes], section 8). The server **MUST** create at most one quote per offer, **MUST** rate-limit quote creation per client address, and **MUST NOT** create a quote for a request that did not ask for one.
 
-The wallet checks that the quote is locked to its key and that the invoice amount matches, saves the quote and its key, pays the invoice from any Lightning wallet, and then either:
+Before it pays, the wallet **MUST** run the checks of [notes][notes] section 8.3: the offer passes the socket's checks, the quote is locked to its key, the quote amount is at most the `amount` it sent in `BNAP-Fund` and equals the amount of the invoice, and the invoice has not expired. It **MUST NOT** pay more than it asked for. It **MUST** save the quote ID, the quote key and the offer before it pays, so that a request that fails can still mint the paid quote. It then pays the invoice from any Lightning wallet, and either:
 
 - redeems the quote inside its next credential, signing the Digest with the quote key. The quote's amount joins the value, and the change comes back as proofs; or
 - mints the quote through [NUT-04][04] as usual, with its [NUT-20][20] signature.
