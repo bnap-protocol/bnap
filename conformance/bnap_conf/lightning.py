@@ -9,15 +9,20 @@ names for each native kind:
 The MPP shapes here are the suite's profile "bnap-conf-mpp-1" (see
 notes/n11-conformance.md): native entry data is the challenge as canonical
 JSON; the credential is b64u(JSON {"challenge", "payload": {"preimage"}});
-the id is b64u(OfferID || 16-byte tag). Real payers verify invoice
-signatures; this module does not.
+the id is b64u(OfferID || 16-byte tag).
+
+decode_bolt11 is strict, because run.py caps its spending against this
+decode while the payer parses the invoice on its own: any reading the two
+could disagree on is refused. See decode_bolt11 for the rules.
 """
 import base64
 import hashlib
 import hmac
 import json
+import re
 
 from .codec import b64u, b64u_decode
+from .crypto import k1_pub, k1_recover, k1_sign_recoverable, key_from_label
 
 # ---------------------------------------------------------------- bech32
 
@@ -83,11 +88,13 @@ def convertbits(data, frombits, tobits, pad=True):
 
 
 class Invoice:
-    def __init__(self, hrp, amount_msat, timestamp, tags):
+    def __init__(self, hrp, network, amount_msat, timestamp, tags, payee):
         self.hrp = hrp
+        self.network = network
         self.amount_msat = amount_msat
         self.timestamp = timestamp
         self.tags = tags
+        self.payee = payee
 
     @property
     def payment_hash(self):
@@ -99,87 +106,153 @@ class Invoice:
 
     @property
     def amount_sat(self):
-        return None if self.amount_msat is None else self.amount_msat // 1000
+        """The amount in whole satoshis, or None when the invoice has no amount or a fraction of one."""
+        if self.amount_msat is None or self.amount_msat % 1000:
+            return None
+        return self.amount_msat // 1000
 
 
-_TAGS = {1: "p", 23: "h", 13: "d", 6: "x", 16: "s", 19: "n"}
+# The network part of the human-readable prefix, by the BOLT 11 and SLIP-0173 registry.
+NETWORKS = {"bc": "bitcoin", "tb": "testnet", "tbs": "signet", "bcrt": "regtest", "sb": "simnet"}
+MAX_MSAT = 21_000_000 * 10 ** 11  # every bitcoin there will be, in millisatoshi
+_HRP = re.compile(r"ln(bcrt|bc|tbs|tb|sb)(?:([1-9][0-9]*)([munp]?))?", re.ASCII)
+_MULT = {"": 10 ** 11, "m": 10 ** 8, "u": 10 ** 5, "n": 10 ** 2}  # msat per unit; "p" is a tenth of one
+_TAGS = {1: "p", 23: "h", 13: "d", 6: "x", 16: "s", 19: "n", 24: "c"}
 _TAG_CODES = {v: k for k, v in _TAGS.items()}
-_MULT = {"m": 10 ** 8, "u": 10 ** 5, "n": 10 ** 2}  # msat per unit; "p" handled apart
+_FIXED_WORDS = {"p": 52, "h": 52, "s": 52, "n": 53}
+DEFAULT_NODE_KEY = key_from_label("bnap conformance lightning node key")
 
 
-def _amount_msat(s):
-    if not s:
+def _amount_msat(digits, mult):
+    if digits is None:
         return None
-    if s[-1] == "p":
-        n = int(s[:-1])
+    n = int(digits)
+    if mult == "p":
         if n % 10:
-            raise ValueError("sub-msat amount")
-        return n // 10
-    if s[-1] in _MULT:
-        return int(s[:-1]) * _MULT[s[-1]]
-    return int(s) * 10 ** 11
+            raise ValueError("a p amount must end in 0: it would be a fraction of a millisatoshi")
+        msat = n // 10
+    else:
+        msat = n * _MULT[mult]
+    if msat > MAX_MSAT:
+        raise ValueError(f"amount of {msat} msat is more than there will ever be")
+    return msat
+
+
+def _int_of(words):
+    v = 0
+    for w in words:
+        v = v << 5 | w
+    return v
+
+
+def _signing_hash(hrp, data):
+    return hashlib.sha256(hrp.encode() + bytes(convertbits(data, 5, 8))).digest()
 
 
 def decode_bolt11(s):
-    hrp, data = bech32_decode(s.strip())
-    if not hrp.startswith("ln"):
-        raise ValueError("not a Lightning invoice")
-    rest = hrp[2:]
-    for net in ("bcrt", "bc", "tbs", "tb", "sb"):
-        if rest.startswith(net):
-            amt = rest[len(net):]
-            break
-    else:
-        raise ValueError("unknown network prefix")
+    """Decode a BOLT 11 invoice strictly, or raise ValueError. The rules, beyond bech32:
+
+    - the string is printable ASCII in one case, with no surrounding whitespace;
+    - the prefix is exactly ln + one of the NETWORKS + an optional amount: a decimal with no
+      leading zero and an optional multiplier m, u, n or p, where p needs a last digit 0 and the
+      total may not exceed 21 million bitcoin;
+    - tagged fields fill the data part exactly up to the 65-byte signature, with no partial field
+      and no trailing words;
+    - exactly one p field, at most one each of h, d, s, n, x and c; p, h and s have 52 words and n
+      53, with zero padding bits; exactly one of d (valid UTF-8) and h; unknown fields are skipped;
+    - the signature has r and s in range and a recovery id 0 to 3, recovers a public key, and that
+      key is the n field when there is one.
+    """
+    if not isinstance(s, str) or not s or any(not 33 <= ord(c) <= 126 for c in s):
+        raise ValueError("an invoice is printable ASCII without whitespace")
+    hrp, data = bech32_decode(s)
+    m = _HRP.fullmatch(hrp)
+    if m is None:
+        raise ValueError(f"prefix {hrp!r} is not ln + a known network + a valid amount")
+    net, digits, mult = m.group(1), m.group(2), m.group(3) or ""
+    amount = _amount_msat(digits, mult)
     if len(data) < 7 + 104:
         raise ValueError("invoice too short")
-    ts = 0
-    for w in data[:7]:
-        ts = ts << 5 | w
-    body = data[7:-104]
-    tags, i = {}, 0
-    while i + 3 <= len(body):
-        t, ln = body[i], body[i + 1] << 5 | body[i + 2]
-        words = body[i + 3:i + 3 + ln]
-        i += 3 + ln
+    ts = _int_of(data[:7])
+    body, sig_words = data[7:-104], data[-104:]
+    tags, i, counts = {}, 0, {}
+    while i < len(body):
+        if i + 3 > len(body):
+            raise ValueError("trailing words after the last tagged field")
+        t, ln_ = body[i], body[i + 1] << 5 | body[i + 2]
+        words = body[i + 3:i + 3 + ln_]
+        if len(words) != ln_:
+            raise ValueError("a tagged field runs past the signature")
+        i += 3 + ln_
         name = _TAGS.get(t)
-        if name in ("p", "h", "s", "n") and name not in tags:
-            raw = bytes(convertbits(words, 5, 8, pad=False)) if ln == 52 or name == "n" else None
-            if raw is not None:
-                tags[name] = raw
-        elif name == "x":
-            v = 0
-            for w in words:
-                v = v << 5 | w
-            tags["x"] = v
-        elif name == "d":
-            tags["d"] = bytes(convertbits(words, 5, 8, pad=False)).decode("utf-8", "replace")
-    return Invoice(hrp, _amount_msat(amt), ts, tags)
+        if name is None:
+            continue
+        counts[name] = counts.get(name, 0) + 1
+        if counts[name] > 1:
+            raise ValueError(f"more than one {name} field")
+        if name in _FIXED_WORDS:
+            if ln_ != _FIXED_WORDS[name]:
+                raise ValueError(f"{name} field of {ln_} words, not {_FIXED_WORDS[name]}")
+            tags[name] = bytes(convertbits(words, 5, 8, pad=False))
+        elif name in ("x", "c"):
+            tags[name] = _int_of(words)
+        else:
+            try:
+                tags["d"] = bytes(convertbits(words, 5, 8, pad=False)).decode("utf-8")
+            except UnicodeDecodeError:
+                raise ValueError("d field is not UTF-8") from None
+    if "p" not in tags:
+        raise ValueError("no payment hash (p field)")
+    if ("d" in tags) == ("h" in tags):
+        raise ValueError("exactly one of d and h is required")
+    sig = bytes(convertbits(sig_words, 5, 8, pad=False))
+    payee = k1_recover(_signing_hash(hrp, data[:-104]), sig[:64], sig[64])
+    if payee is None:
+        raise ValueError("the signature recovers no public key")
+    if "n" in tags and tags["n"] != payee:
+        raise ValueError("the signature is not by the n field's key")
+    return Invoice(hrp, NETWORKS[net], amount, ts, tags, payee)
+
+
+def _amount_part(amount_msat):
+    if amount_msat is None:
+        return ""
+    for mult in ("", "m", "u", "n"):
+        if amount_msat % _MULT[mult] == 0:
+            return f"{amount_msat // _MULT[mult]}{mult}"
+    return f"{amount_msat * 10}p"
+
+
+def sign_bolt11(hrp, data, node_sk=DEFAULT_NODE_KEY):
+    """Append a recoverable signature by node_sk to the data words and bech32-encode (test helper)."""
+    sig, recid = k1_sign_recoverable(node_sk, _signing_hash(hrp, data))
+    return bech32_encode(hrp, data + convertbits(sig + bytes([recid]), 8, 5))
+
+
+def bolt11_field(name, words):
+    return [_TAG_CODES[name], len(words) >> 5, len(words) & 31] + words
 
 
 def encode_bolt11(*, payment_hash, description_hash, amount_sat, timestamp, network="bcrt",
-                  expiry=3600, payment_secret=None):
-    """A structurally valid invoice with an all-zero node signature (test only)."""
-    msat = amount_sat * 1000
-    amt = f"{msat // 100}n" if msat % 100 == 0 else f"{msat * 10}p"
-    hrp = "ln" + network + amt
+                  expiry=3600, payment_secret=None, node_sk=DEFAULT_NODE_KEY):
+    """An invoice signed by node_sk (test only; the mock gate and the unit tests)."""
+    hrp = "ln" + network + _amount_part(None if amount_sat is None else amount_sat * 1000)
     data = [(timestamp >> (5 * (6 - i))) & 31 for i in range(7)]
-
-    def field(name, words):
-        return [_TAG_CODES[name], len(words) >> 5, len(words) & 31] + words
-
-    data += field("p", convertbits(payment_hash, 8, 5))
-    data += field("h", convertbits(description_hash, 8, 5))
+    data += bolt11_field("p", convertbits(payment_hash, 8, 5))
+    data += bolt11_field("h", convertbits(description_hash, 8, 5))
     if payment_secret is not None:
-        data += field("s", convertbits(payment_secret, 8, 5))
+        data += bolt11_field("s", convertbits(payment_secret, 8, 5))
     xw = []
     v = expiry
     while v:
         xw.insert(0, v & 31)
         v >>= 5
-    data += field("x", xw or [0])
-    data += convertbits(bytes(65), 8, 5)
-    return bech32_encode(hrp, data)
+    data += bolt11_field("x", xw or [0])
+    return sign_bolt11(hrp, data, node_sk)
+
+
+def node_id(node_sk=DEFAULT_NODE_KEY):
+    return k1_pub(node_sk)
 
 # ---------------------------------------------------------------- macaroons (libmacaroons v2)
 

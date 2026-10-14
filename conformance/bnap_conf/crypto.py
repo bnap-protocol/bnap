@@ -1,8 +1,9 @@
-"""Signatures: BIP-340 from the reference encoder, ECDSA P-256 for DPoP.
+"""Signatures: BIP-340 from the reference encoder, ECDSA P-256 for DPoP, and
+recoverable ECDSA over secp256k1 for BOLT 11 invoice signatures.
 
 BIP-340 signing uses 32 zero bytes of auxiliary randomness by default, as the
 draft-00 vectors do. ECDSA uses RFC 6979 deterministic nonces so generated
-cases are reproducible. Neither is constant time.
+cases are reproducible. None of it is constant time.
 """
 import hashlib
 import hmac
@@ -169,9 +170,9 @@ def p256_pub(sk):
     return x.to_bytes(32, "big"), y.to_bytes(32, "big")
 
 
-def _rfc6979_k(d, h1):
+def _rfc6979_k(d, h1, n=_N):
     x = d.to_bytes(32, "big")
-    z = (int.from_bytes(h1, "big") % _N).to_bytes(32, "big")
+    z = (int.from_bytes(h1, "big") % n).to_bytes(32, "big")
     v, k = b"\x01" * 32, b"\x00" * 32
     k = hmac.new(k, v + b"\x00" + x + z, hashlib.sha256).digest()
     v = hmac.new(k, v, hashlib.sha256).digest()
@@ -180,7 +181,7 @@ def _rfc6979_k(d, h1):
     while True:
         v = hmac.new(k, v, hashlib.sha256).digest()
         cand = int.from_bytes(v, "big")
-        if 1 <= cand < _N:
+        if 1 <= cand < n:
             return cand
         k = hmac.new(k, v + b"\x00", hashlib.sha256).digest()
         v = hmac.new(k, v, hashlib.sha256).digest()
@@ -234,3 +235,55 @@ def es256_verify(x, y, msg, sig, *, low_s=False):
     w = _inv(s, _N)
     pt = _add(_mul(_G, e * w % _N), _mul(q, r * w % _N))
     return pt is not None and pt[0] % _N == r
+
+# ---------------------------------------------------------------- secp256k1 ECDSA with recovery (BOLT 11)
+
+
+def k1_pub(sk):
+    """The SEC1 compressed public key (33 bytes) of a secp256k1 secret key."""
+    x, y = _K1.affine(_K1.mul(_K1.g, int.from_bytes(sk, "big")))
+    return bytes([2 + (y & 1)]) + _xb(x)
+
+
+def k1_sign_recoverable(sk, h32):
+    """ECDSA over the 32-byte hash h32 with an RFC 6979 nonce: (r || s with s <= n/2, recovery id 0-3)."""
+    n = ref.N
+    d = int.from_bytes(sk, "big") % n
+    if d == 0:
+        raise ValueError("bad secp256k1 secret key")
+    e = int.from_bytes(h32, "big")
+    k = _rfc6979_k(d, h32, n)
+    R = _K1.affine(_K1.mul(_K1.g, k))
+    r = R[0] % n
+    s = _inv(k, n) * (e + r * d) % n
+    if r == 0 or s == 0:
+        raise ValueError("degenerate signature")
+    recid = (R[1] & 1) | (2 if R[0] >= n else 0)
+    if s > n // 2:
+        s, recid = n - s, recid ^ 1
+    return _xb(r) + _xb(s), recid
+
+
+def k1_recover(h32, sig, recid):
+    """The compressed public key that signed h32 with r || s and recovery id recid, or None."""
+    n, p = ref.N, ref.P
+    if len(sig) != 64 or recid not in (0, 1, 2, 3):
+        return None
+    r, s = int.from_bytes(sig[:32], "big"), int.from_bytes(sig[32:], "big")
+    if not (1 <= r < n and 1 <= s < n):
+        return None
+    x = r + (n if recid & 2 else 0)
+    if x >= p:
+        return None
+    c = (pow(x, 3, p) + 7) % p
+    y = pow(c, (p + 1) // 4, p)
+    if y * y % p != c:
+        return None
+    if y & 1 != recid & 1:
+        y = p - y
+    e = int.from_bytes(h32, "big") % n
+    ri = _inv(r, n)
+    q = _K1.affine(_K1.add(_K1.mul((x, y), s * ri % n), _K1.mul(_K1.g, (n - e) * ri % n)))
+    if q is None:
+        return None
+    return bytes([2 + (q[1] & 1)]) + _xb(q[0])

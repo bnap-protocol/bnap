@@ -156,6 +156,7 @@ class MockGate:
         self.mac_key = os.urandom(32)
         self.macaroon_root = os.urandom(32)
         self.mpp_key = os.urandom(32)
+        self.node_sk = key_from_label("bnap mock lightning node key")
         self.replay_window = FAULT_REPLAY_WINDOW if "reusable-window" in self.faults else REPLAY_WINDOW
         self.store = st.UseStore(self.replay_window, PENDING_TIMEOUT)
         self.cache = {}
@@ -230,7 +231,7 @@ class MockGate:
             native = []
             if "native-in-route" in self.faults and pay:
                 inv = ln.encode_bolt11(payment_hash=os.urandom(32), description_hash=bytes(32), amount_sat=amount,
-                                       timestamp=now)
+                                       timestamp=now, node_sk=self.node_sk)
                 native = [of.native_entry(0, "bolt11", inv.encode())]
             fields = of.offer_fields(scope=hp.route_scope(self.origin, route["id"]), route_scope=True,
                                      metered=bool(route.get("metered")), expires=now + ttl,
@@ -267,7 +268,8 @@ class MockGate:
         natives, challenges = [], []
         preimage = os.urandom(32)
         ph = hashlib.sha256(preimage).digest()
-        invoice = ln.encode_bolt11(payment_hash=ph, description_hash=oid, amount_sat=amount, timestamp=now)
+        invoice = ln.encode_bolt11(payment_hash=ph, description_hash=oid, amount_sat=amount, timestamp=now,
+                                   node_sk=self.node_sk)
         with self.lock:
             self.invoices[ph] = {"preimage": preimage, "amount": amount, "paid": False, "invoice": invoice}
         for i, s in enumerate(pay_schemes):

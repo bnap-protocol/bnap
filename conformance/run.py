@@ -19,8 +19,13 @@ Profiles:
 --payer none runs everything that needs no money. --payer cmd:<command>
 adds value flows: the command is run through the shell with the BOLT 11
 invoice appended as its last argument (and in BNAP_INVOICE); it must pay
-it and print the 32-byte preimage in hex. The runner refuses any invoice
-above --max-spend-sat per action or in total.
+it and print the 32-byte preimage in hex. The runner decodes the invoice
+strictly, pays only the exact amount of the offer's pay entry, and refuses
+any invoice above --max-spend-sat per action or in total. It also sets
+BNAP_EXPECT_AMOUNT_SAT and BNAP_EXPECT_PAYMENT_HASH (hex): a payer wrapper
+MUST decode the invoice itself and refuse to pay when its amount or payment
+hash differs, so that the cap holds even where the two decoders disagree.
+conformance/payers/lncli-payer.sh is such a wrapper for lnd.
 
 Roles name manifest routes with a special application behaviour:
   slow=ID   an action that runs for at least a second (PENDING replays)
@@ -510,21 +515,38 @@ class Ctx:
 
     # -------------------------------------------------------- payer
 
-    def pay(self, invoice):
+    def pay(self, invoice, entry):
+        """Pay invoice for the pay entry entry of an offer, through --payer, and return the preimage.
+
+        The spend cap is checked against the runner's own decode while the payer parses the invoice
+        on its own, so the decode is strict (ln.decode_bolt11), the amount must be exactly the
+        entry's, and the payer gets BNAP_EXPECT_AMOUNT_SAT and BNAP_EXPECT_PAYMENT_HASH: a wrapper
+        MUST decode the invoice itself and refuse to pay when either differs."""
         spec = self.args.payer
         if not spec or spec == "none":
             raise Skip("needs --payer cmd:...")
-        inv = ln.decode_bolt11(invoice)
-        amt = inv.amount_sat
-        if amt is None:
+        if not isinstance(invoice, str):
+            raise Fail("the offer names no BOLT 11 invoice to pay")
+        try:
+            inv = ln.decode_bolt11(invoice)
+        except ValueError as e:
+            raise Skip(f"the runner refuses to pay an invoice it cannot decode strictly: {e}") from None
+        if inv.amount_msat is None:
             raise Skip("invoice has no amount; the runner pays only fixed amounts")
+        if entry.unit != "sat":
+            raise Skip(f"the pay entry is priced in {entry.unit!r}; the runner pays sat entries only")
+        amt = inv.amount_sat
+        check(amt is not None and amt == entry.amount,
+              f"the invoice asks {inv.amount_msat} msat, the offer's {entry.scheme} entry {entry.amount} sat: "
+              "the runner pays only the exact amount the offer names")
         with self.lock:
             if amt > self.args.max_spend_sat or self.spent_sat + amt > self.args.max_spend_sat:
                 raise Skip(f"invoice of {amt} sat is over --max-spend-sat {self.args.max_spend_sat} "
                            f"(spent {self.spent_sat})")
             self.spent_sat += amt
         cmd = spec[4:] + " " + shlex.quote(invoice)
-        env = dict(os.environ, BNAP_INVOICE=invoice)
+        env = dict(os.environ, BNAP_INVOICE=invoice, BNAP_EXPECT_AMOUNT_SAT=str(amt),
+                   BNAP_EXPECT_PAYMENT_HASH=inv.payment_hash.hex())
         out = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=180, env=env)
         if out.returncode != 0:
             raise Fail("payer failed: " + (out.stderr.strip() or out.stdout.strip())[:160])
@@ -863,7 +885,10 @@ def ofr_native_embed(ctx):
         for n in o.native:
             seen.append(n.kind)
             if n.kind == "bolt11":
-                inv = ln.decode_bolt11(n.data.decode())
+                try:
+                    inv = ln.decode_bolt11(n.data.decode("ascii"))
+                except (ValueError, UnicodeDecodeError) as e:
+                    raise Fail(f"the bolt11 native is not a valid BOLT 11 invoice: {e}") from None
                 check(inv.description_hash == o.offer_id, "bolt11 description hash is not the OfferID")
             elif n.kind == "l402-macaroon":
                 m = ln.parse_macaroon(n.data)
@@ -1856,7 +1881,7 @@ def l402_offer(ctx, fresh=False):
       profiles=WITH_CREDENTIALS, needs=("payer",))
 def pay_l402(ctx):
     p, raw, o, mac, inv = l402_offer(ctx, fresh=True)
-    pre = ctx.pay(inv)
+    pre = ctx.pay(inv, o.pay_entry("httpauth:L402"))
     token = ln.l402_token(mac, pre)
     cred = cr.build_credential(offer=raw, pay=cr.SchemeItem("httpauth:L402", token.encode(), None))
     ex = ctx.request(p.req, credential=cred, label="L402 via BNAP")
@@ -1914,7 +1939,7 @@ def pay_mpp(ctx):
             if chal is None:
                 continue
             params = json.loads(chal)
-            pre = ctx.pay(ln.mpp_request_invoice(params))
+            pre = ctx.pay(ln.mpp_request_invoice(params), o.pay[idx])
             cred = cr.build_credential(offer=raw, pay=cr.SchemeItem("payment:lightning/charge",
                                                                     ln.mpp_credential(params, pre).encode(), None))
             rr = expect_admitted(ctx.request(p.req, credential=cred, label="MPP via BNAP"))
@@ -1927,7 +1952,7 @@ def pay_mpp(ctx):
       profiles=WITH_CREDENTIALS, needs=("payer",))
 def pay_native(ctx):
     p, raw, o, mac, inv = l402_offer(ctx, fresh=True)
-    pre = ctx.pay(inv)
+    pre = ctx.pay(inv, o.pay_entry("httpauth:L402"))
     token = ln.l402_token(mac, pre)
     ex = ctx.request(p.req, extra=[("Authorization", "L402 " + token)], label="native L402")
     r = expect_admitted(ex)
