@@ -143,7 +143,7 @@ Restore ([NUT-09][09]) and state checks ([NUT-07][07]) work unchanged: the walle
 
 ## DLEQ proofs
 
-A mint that signs outputs for key-secret keysets **SHOULD** use the deterministic nonce of [NUT-12][12], so that it can recompute a response it has already sent. Specifications that require recomputed responses, such as the BNAP socket, make it a **MUST**. Wallets **MUST NOT** reveal `r` or a proof's DLEQ proof to the mint, because either links a spend to its issuance.
+A mint that signs outputs for key-secret keysets **SHOULD** use the deterministic nonce of [NUT-12][12], so that it can recompute a response it has already sent. Specifications that require recomputed responses, such as the `bnap:notes` scheme of the BNAP socket, make it a **MUST**. Wallets **MUST NOT** reveal `r` or a proof's DLEQ proof to the mint, because either links a spend to its issuance.
 
 ## Wallet rules
 
