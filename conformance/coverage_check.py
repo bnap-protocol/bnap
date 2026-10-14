@@ -11,8 +11,9 @@ code blocks, the key-word definition itself and the error code named
 REQUIRED. Each gets the ID R-<section>-<nn> in document order. The check
 then requires, for every ID, a COVERAGE.md row whose quote is taken from
 that sentence and which names at least one vector file group or runner case,
-or says "untestable black-box" with a reason. Every runner case and vector
-group it names must exist.
+or whose status is "untestable black-box" with a reason. Every status starts
+with one of: covered, partial, client duty, untestable black-box. Every runner
+case and vector group a row names must exist.
 """
 import json
 import pathlib
@@ -23,6 +24,8 @@ HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parent
 SPEC = REPO / "spec" / "socket-draft-00.md"
 COVERAGE = HERE / "COVERAGE.md"
+STATUSES = ("covered", "partial", "client duty", "untestable black-box")
+UNTESTABLE = "untestable black-box"
 KEYWORDS = re.compile(r"\b(MUST NOT|MUST|SHOULD NOT|SHOULD|REQUIRED|RECOMMENDED|SHALL NOT|SHALL)\b")
 
 
@@ -100,6 +103,21 @@ def check_refs(rid, row, cases, groups, errors):
     return named
 
 
+def status_of(row):
+    """The status keyword a row's last cell starts with, or None."""
+    return next((k for k in STATUSES if row[6].startswith(k)), None)
+
+
+def check_status(rid, row, named, errors):
+    st = status_of(row)
+    if st is None:
+        errors.append(f"{rid}: status must start with one of {', '.join(STATUSES)}: {row[6][:40]}")
+    elif not named and st != UNTESTABLE:
+        errors.append(f"{rid}: names no vector group or runner case and its status is not {UNTESTABLE}")
+    elif st == UNTESTABLE and not row[6][len(UNTESTABLE):].strip(" :"):
+        errors.append(f"{rid}: {UNTESTABLE} needs a reason")
+
+
 def known_runner_cases():
     sys.path.insert(0, str(HERE))
     import run
@@ -134,9 +152,7 @@ def check():
             errors.append(f"{r['id']}: quote not taken from the sentence: {row[3][:60]}")
         if row[1] != r["section"]:
             errors.append(f"{r['id']}: section {row[1]} should be {r['section']}")
-        named = check_refs(r["id"], row, cases, groups, errors)
-        if not named and "untestable black-box" not in row[6]:
-            errors.append(f"{r['id']}: names no vector group or runner case and is not marked untestable")
+        check_status(r["id"], row, check_refs(r["id"], row, cases, groups, errors), errors)
     for rid in rows:
         if rid not in ids:
             errors.append(f"{rid}: row for a requirement that draft-00 does not have")
@@ -149,8 +165,7 @@ def check():
         parent = re.match(r"(R-[0-9.]+-[0-9]{2})[a-z]$", rid)
         if parent and parent.group(1) not in ids:
             errors.append(f"{rid}: sub-row of a requirement draft-00 does not have")
-        if not check_refs(rid, row, cases, groups, errors) and "untestable black-box" not in row[6]:
-            errors.append(f"{rid}: names no vector group or runner case and is not marked untestable")
+        check_status(rid, row, check_refs(rid, row, cases, groups, errors), errors)
     return reqs, errors
 
 
@@ -167,11 +182,12 @@ def main(argv):
         return 1
     rows = coverage_rows()
     every = coverage_rows(all_rows=True)
-    untestable = sum(1 for r in reqs if "untestable black-box" in rows[r["id"]][6])
+    counts = {k: sum(1 for r in reqs if status_of(rows[r["id"]]) == k) for k in STATUSES}
     runner = sum(1 for r in reqs if re.search(r"`[A-Z][A-Z0-9-]+`", rows[r["id"]][5]))
     vectors = sum(1 for r in reqs if "`" in rows[r["id"]][4])
-    print(f"coverage: {len(reqs)} normative sentences, every one mapped ({vectors} by vectors, {runner} by runner "
-          f"cases, {untestable} marked untestable black-box); {len(every) - len(rows)} further rows checked")
+    print(f"coverage: {len(reqs)} normative sentences, every one mapped ({vectors} named by vectors, {runner} by "
+          f"runner cases); status: " + ", ".join(f"{counts[k]} {k}" for k in STATUSES)
+          + f"; {len(every) - len(rows)} further rows checked")
     return 0
 
 
