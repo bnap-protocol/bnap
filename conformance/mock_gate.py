@@ -594,9 +594,7 @@ def selftest(report=None, with_payer=False, max_wait=None):
         g = MockGate(faults=faults).start()
         try:
             rep = pathlib.Path(report) / (name or "clean") if report else None
-            extra = ["--max-wait", str(max_wait)] if max_wait is not None and name else []
-            if not name and max_wait is not None:
-                extra = ["--max-wait", str(max_wait)]
+            extra = ["--max-wait", str(max_wait)] if max_wait is not None else []
             results[name] = runner.run(runner_args(g, rep, with_payer and not name, extra), quiet=True)
         finally:
             g.stop()
