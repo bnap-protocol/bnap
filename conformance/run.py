@@ -1784,6 +1784,32 @@ def rcpt_every(ctx):
     bad = [x.label for x in xs if not x.receipt_raw]
     check(not bad, "no receipt on: " + ", ".join(bad[:5]))
 
+@case("OFR-NONCE-ONE-MINT", "12", "MUST", "native challenges are minted at most once per offer nonce: exact offers "
+      "that share a nonce carry byte-identical natives (DECISIONS row 24)")
+def ofr_nonce_one_mint(ctx):
+    for r in ctx.routes():
+        if any(o.native for _, o in ctx.probe(r).offers):
+            for _ in range(2):
+                ctx.probe(r, fresh=True)
+    with ctx.lock:
+        seen = list(ctx.seen_offers)
+    by_nonce = {}
+    for raw, o in seen:
+        if o.native and not o.route_scope:
+            by_nonce.setdefault(o.nonce, {})[raw] = o
+    if not by_nonce:
+        raise Skip("no native records offered")
+    probs = []
+    for nonce, offers in by_nonce.items():
+        sets = {tuple(sorted((n.pay_index, n.kind, n.data) for n in o.native)) for o in offers.values()}
+        if len(sets) > 1:
+            kinds = {x[1] for nat in sets for x in nat}
+            differ = sorted(k for k in kinds if len({tuple(x for x in nat if x[1] == k) for nat in sets}) > 1)
+            probs.append(f"nonce {nonce.hex()[:12]}: {len(offers)} offers carry {len(sets)} different native sets "
+                         f"({', '.join(differ)} differ)")
+    check(not probs, f"{len(probs)} nonce(s) with more than one mint: " + "; ".join(probs[:3]))
+
+
 def _no_single_use_id(ctx, c):
     """6.1: a credential that yields no ID under the single model, here one without
     pay whose attestations all have the reusable or rate model in the registry."""

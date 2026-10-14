@@ -30,6 +30,7 @@ Faults:
                         outlive their outcome record
   late-expiry           the scheme plugs run before the expiry check, and STALE
                         is raised only afterwards (4.4 order broken)
+  nonce-reuse           one fixed nonce per route, with a new invoice on every 402
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -58,7 +59,8 @@ from bnap_conf.codec import BnapError, b64u, b64u_decode  # noqa: E402
 from bnap_conf.crypto import schnorr_pub, key_from_label  # noqa: E402
 
 FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "bad-ack", "no-dpop",
-          "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window", "late-expiry")
+          "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window", "late-expiry",
+          "nonce-reuse")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -232,8 +234,12 @@ class MockGate:
         qe = now + ttl + 30 if "quote-expires-over" in self.faults else None
         pay = [of.pay_entry(s, amount, unit, quote_expires=qe) for s in pay_schemes]
         attest = self._attest_entries(route, ("S", "A", "O"))
+        if "nonce-reuse" in self.faults:
+            nonce = hashlib.sha256(b"fixed nonce " + route["id"].encode()).digest()[:16]
+        else:
+            nonce = os.urandom(16)
         base = of.offer_fields(scope=scope, expires=now + ttl, info=self.origin + "/.well-known/bnap",
-                               offer_key=schnorr_pub(self.offer_sk), nonce=os.urandom(16), pay=pay,
+                               offer_key=schnorr_pub(self.offer_sk), nonce=nonce, pay=pay,
                                attest=attest, headers=route.get("headers") or None,
                                extra=[(3000000001 + 2 * (now % 400), os.urandom(2))])
         oid = codec.tagged("bnap/offer", b"".join(codec.bigsize(t) + codec.bigsize(len(v)) + v
@@ -643,6 +649,7 @@ FAULT_CASES = {
     "ext-ignored": "ATT-EXT-BOUND",
     "reusable-window": "USE-REUSABLE-WINDOW",
     "late-expiry": "ERR-EXPIRY-BEFORE-PLUG",
+    "nonce-reuse": "OFR-NONCE-ONE-MINT",
 }
 
 # Fault sets under which no admission is reachable without a payer: the runner
