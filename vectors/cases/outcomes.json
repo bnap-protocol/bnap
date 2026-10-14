@@ -1,0 +1,1149 @@
+{
+ "bnapCases": 1,
+ "area": "outcomes",
+ "title": "Commit, replay, settle and timeout as state-machine traces",
+ "schema": "schema/outcomes.schema.json",
+ "generator": "conformance/gen_cases.py",
+ "source": "spec/socket-draft-00.md (doc rev 39), spec/ERRATA.md, spec/DECISIONS.md, registry/generated/registry.json, reference/python/bnap_ref.py",
+ "numberOfTests": 21,
+ "header": [
+  "Each case is a trace of operations on one use store (draft-00 6.3 and 6.4). A conformant",
+  "store returns, for every step, what that step's expect says. commit returns New, Replay",
+  "(with the recorded status), SPENT, RATE_LIMITED or UNAVAILABLE; gate names what the gate",
+  "then does. IDs are labels unless the case computes them from the socket formulas. A case",
+  "is invalid when its last commit is refused, with that refusal as its error."
+ ],
+ "notes": {
+  "Valid": {
+   "bugType": "BASIC",
+   "description": "A well-formed input every implementation must accept."
+  },
+  "Replay": {
+   "bugType": "BASIC",
+   "description": "The same credential for the same request finds its outcome."
+  },
+  "Spent": {
+   "bugType": "SPENT",
+   "description": "A single use ID already committed under another ReplayKey."
+  },
+  "Abort": {
+   "bugType": "BASIC",
+   "description": "An aborted commit consumes nothing."
+  },
+  "Rate": {
+   "bugType": "RATE_LIMITED",
+   "description": "A counter is full."
+  },
+  "Once": {
+   "bugType": "BASIC",
+   "description": "The status changes exactly once, from PENDING, and never flips on replay."
+  },
+  "Timeout": {
+   "bugType": "BASIC",
+   "description": "PENDING past pending_timeout becomes FAILED, with counters given back."
+  },
+  "Purge": {
+   "bugType": "BASIC",
+   "description": "After replay_window the outcome may go; single uses stay."
+  },
+  "Unavailable": {
+   "bugType": "UNAVAILABLE",
+   "description": "The store cannot be reached: fail closed."
+  },
+  "SharedRail": {
+   "bugType": "SPENT",
+   "description": "One payment presented through two schemes admits one action."
+  },
+  "ReceiptOnly": {
+   "bugType": "BASIC",
+   "description": "The carrier kept no response: the receipt alone, with the recorded scheme_result."
+  },
+  "Window": {
+   "bugType": "POLICY",
+   "description": "A credential with no single-use ID whose offer outlives its outcome record. draft-00 names no code for this refusal; POLICY is used, others are acceptable."
+  }
+ },
+ "testGroups": [
+  {
+   "type": "Trace",
+   "section": "6.3",
+   "description": "Run the steps in order on one store.",
+   "tests": [
+    {
+     "tcId": 1,
+     "comment": "commit, settle OK, then three replays: the same status every time, replayed set",
+     "flags": [
+      "Replay",
+      "Once"
+     ],
+     "sections": [
+      "6.3",
+      "6.4"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700101,
+        "rk": "rk1",
+        "status": "OK",
+        "response": "kept",
+        "expect": {
+         "settled": true
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700102,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "Replay",
+         "status": "OK",
+         "gate": "replay-with-response",
+         "replayed": true,
+         "scheme_result": null
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700103,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "Replay",
+         "status": "OK",
+         "gate": "replay-with-response",
+         "replayed": true,
+         "scheme_result": null
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700104,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "Replay",
+         "status": "OK",
+         "gate": "replay-with-response",
+         "replayed": true,
+         "scheme_result": null
+        }
+       }
+      ]
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 2,
+     "comment": "the same single use ID under another ReplayKey",
+     "flags": [
+      "Spent"
+     ],
+     "sections": [
+      "6.3"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700101,
+        "rk": "rk1",
+        "status": "OK",
+        "expect": {
+         "settled": true
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700102,
+        "rk": "rk2",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "SPENT",
+         "gate": "SPENT"
+        }
+       }
+      ]
+     },
+     "result": "invalid",
+     "error": "SPENT",
+     "errorCode": 12
+    },
+    {
+     "tcId": 3,
+     "comment": "an aborted commit consumes nothing",
+     "flags": [
+      "Abort"
+     ],
+     "sections": [
+      "6.3"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700101,
+        "rk": "rk2",
+        "singles": [
+         "u1",
+         "u2"
+        ],
+        "expect": {
+         "result": "SPENT",
+         "gate": "SPENT"
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700102,
+        "rk": "rk3",
+        "singles": [
+         "u2"
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       }
+      ]
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 4,
+     "comment": "a full rate counter refuses and consumes the commit's single uses neither",
+     "flags": [
+      "Rate",
+      "Abort"
+     ],
+     "sections": [
+      "6.3"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "counters": [
+         [
+          "c1",
+          1
+         ]
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700101,
+        "rk": "rk2",
+        "singles": [
+         "u5"
+        ],
+        "counters": [
+         [
+          "c1",
+          1
+         ]
+        ],
+        "expect": {
+         "result": "RATE_LIMITED",
+         "gate": "RATE_LIMITED"
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700102,
+        "rk": "rk3",
+        "singles": [
+         "u5"
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       }
+      ]
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 5,
+     "comment": "a counter full at commit although it had room at pricing",
+     "flags": [
+      "Rate"
+     ],
+     "sections": [
+      "7",
+      "6.3"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rkA",
+        "singles": [
+         "uA"
+        ],
+        "counters": [
+         [
+          "q1",
+          1
+         ]
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rkB",
+        "singles": [
+         "uB"
+        ],
+        "counters": [
+         [
+          "q1",
+          1
+         ]
+        ],
+        "expect": {
+         "result": "RATE_LIMITED",
+         "gate": "RATE_LIMITED"
+        }
+       }
+      ]
+     },
+     "result": "invalid",
+     "error": "RATE_LIMITED",
+     "errorCode": 14
+    },
+    {
+     "tcId": 6,
+     "comment": "a replay while the first is in flight returns PENDING",
+     "flags": [
+      "Replay"
+     ],
+     "sections": [
+      "6.4"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700101,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "Replay",
+         "status": "PENDING",
+         "gate": "PENDING"
+        }
+       }
+      ]
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 7,
+     "comment": "settle succeeds once; a second settle with another status changes nothing",
+     "flags": [
+      "Once"
+     ],
+     "sections": [
+      "6.4"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700101,
+        "rk": "rk1",
+        "status": "OK",
+        "expect": {
+         "settled": true
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700102,
+        "rk": "rk1",
+        "status": "FAILED",
+        "expect": {
+         "settled": false
+        }
+       },
+       {
+        "op": "get",
+        "at": 1791700103,
+        "rk": "rk1",
+        "expect": {
+         "status": "OK"
+        }
+       }
+      ]
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 8,
+     "comment": "FAILED gives the counters back and leaves single uses spent",
+     "flags": [
+      "Once",
+      "Spent"
+     ],
+     "sections": [
+      "6.4"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "counters": [
+         [
+          "c1",
+          1
+         ]
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700101,
+        "rk": "rk1",
+        "status": "FAILED",
+        "expect": {
+         "settled": true
+        }
+       },
+       {
+        "op": "counter",
+        "key": "c1",
+        "expect": {
+         "value": 0
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700102,
+        "rk": "rk3",
+        "counters": [
+         [
+          "c1",
+          1
+         ]
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700103,
+        "rk": "rk2",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "SPENT",
+         "gate": "SPENT"
+        }
+       }
+      ]
+     },
+     "result": "invalid",
+     "error": "SPENT",
+     "errorCode": 12
+    },
+    {
+     "tcId": 9,
+     "comment": "a FAILED outcome replays as FAILED, every time",
+     "flags": [
+      "Replay",
+      "Once"
+     ],
+     "sections": [
+      "6.4"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700101,
+        "rk": "rk1",
+        "status": "FAILED",
+        "response": "kept",
+        "expect": {
+         "settled": true
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700102,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "Replay",
+         "status": "FAILED",
+         "gate": "replay-with-response",
+         "replayed": true,
+         "scheme_result": null
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700103,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "Replay",
+         "status": "FAILED",
+         "gate": "replay-with-response",
+         "replayed": true,
+         "scheme_result": null
+        }
+       }
+      ]
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 10,
+     "comment": "PENDING past pending_timeout becomes FAILED; a late settle changes nothing",
+     "flags": [
+      "Timeout",
+      "Once"
+     ],
+     "sections": [
+      "6.4"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "counters": [
+         [
+          "c1",
+          3
+         ]
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "get",
+        "at": 1791700401,
+        "rk": "rk1",
+        "expect": {
+         "status": "FAILED"
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700402,
+        "rk": "rk1",
+        "status": "OK",
+        "expect": {
+         "settled": false
+        }
+       },
+       {
+        "op": "counter",
+        "key": "c1",
+        "expect": {
+         "value": 0
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700403,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "Replay",
+         "status": "FAILED",
+         "gate": "replay-receipt-only",
+         "replayed": true,
+         "scheme_result": null
+        }
+       }
+      ]
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 11,
+     "comment": "after replay_window the outcome may be deleted, the single use stays: a replay is SPENT",
+     "flags": [
+      "Purge",
+      "Spent"
+     ],
+     "sections": [
+      "6.4"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700101,
+        "rk": "rk1",
+        "status": "OK",
+        "expect": {
+         "settled": true
+        }
+       },
+       {
+        "op": "purge",
+        "at": 1791786501,
+        "expect": {}
+       },
+       {
+        "op": "commit",
+        "at": 1791786502,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "SPENT",
+         "gate": "SPENT"
+        }
+       }
+      ]
+     },
+     "result": "invalid",
+     "error": "SPENT",
+     "errorCode": 12
+    },
+    {
+     "tcId": 12,
+     "comment": "the store cannot be reached: UNAVAILABLE, the action never runs",
+     "flags": [
+      "Unavailable"
+     ],
+     "sections": [
+      "6.3",
+      "12"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "store",
+        "available": false,
+        "expect": {}
+       },
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "UNAVAILABLE",
+         "gate": "UNAVAILABLE"
+        }
+       }
+      ]
+     },
+     "result": "invalid",
+     "error": "UNAVAILABLE",
+     "errorCode": 15
+    },
+    {
+     "tcId": 13,
+     "comment": "a replay of an OK outcome whose response was not kept: the receipt alone",
+     "flags": [
+      "ReceiptOnly"
+     ],
+     "sections": [
+      "6.4",
+      "14"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700101,
+        "rk": "rk1",
+        "status": "OK",
+        "scheme_result": "change-1",
+        "expect": {
+         "settled": true
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700102,
+        "rk": "rk1",
+        "singles": [
+         "u1"
+        ],
+        "expect": {
+         "result": "Replay",
+         "status": "OK",
+         "gate": "replay-receipt-only",
+         "replayed": true,
+         "scheme_result": "change-1"
+        }
+       }
+      ]
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 14,
+     "comment": "one Lightning payment presented through L402 and then MPP admits one action (IDs computed)",
+     "flags": [
+      "SharedRail"
+     ],
+     "sections": [
+      "6.1",
+      "6.3",
+      "14"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "ed65dd566865dff608bbb032f780c4d3b5cc883d96cdb73ece99de83ee4b1f0c",
+        "singles": [
+         "5f210bd3b07d0ff1fc78e2f6715ddcad5dcb2bc0147b06d0261c5703f1867744",
+         "6eed16651ca37abc6b7b3426d889bab9ed338d1e1aab4c26db3b8500df15f5e9"
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700101,
+        "rk": "ed65dd566865dff608bbb032f780c4d3b5cc883d96cdb73ece99de83ee4b1f0c",
+        "status": "OK",
+        "expect": {
+         "settled": true
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700102,
+        "rk": "6f9766d5ee5d5852a34cbbabd24d2e861349487afa9669b1433be4b23b18a242",
+        "singles": [
+         "5f210bd3b07d0ff1fc78e2f6715ddcad5dcb2bc0147b06d0261c5703f1867744",
+         "d17aef98dbd36e716c4bdd93ef9db6a0cd2c205b7662158cf0e3ffe9e6c26c95"
+        ],
+        "expect": {
+         "result": "SPENT",
+         "gate": "SPENT"
+        }
+       }
+      ]
+     },
+     "result": "invalid",
+     "error": "SPENT",
+     "errorCode": 12
+    },
+    {
+     "tcId": 15,
+     "comment": "two clients, same request, reusable attestations: two ReplayKeys, two actions (IDs computed)",
+     "flags": [
+      "Replay"
+     ],
+     "sections": [
+      "6.1",
+      "15"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "b660d5f7dc19576708adda040b045a3ae969ad257cbfb741f04cc9a6a6437e45",
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700101,
+        "rk": "b660d5f7dc19576708adda040b045a3ae969ad257cbfb741f04cc9a6a6437e45",
+        "status": "OK",
+        "response": "kept",
+        "expect": {
+         "settled": true
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700102,
+        "rk": "12bd6f63d8261217a6a70bc1442b414d6e29039a61ca13da85ad5f7a5329c840",
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       }
+      ]
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 16,
+     "comment": "a replay on a new connection (another binding) has the same ReplayKey (section 14)",
+     "flags": [
+      "Replay"
+     ],
+     "sections": [
+      "5.3",
+      "6.4",
+      "14"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "74bd8a797c022ff864706809c6e9b23e9affd1829a093db365178db29b0c2771",
+        "singles": [
+         "b7ca97d6cfdfd56ec53af6abd8fd73f6323ce30032b0e46618f7dca7232b6456"
+        ],
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700101,
+        "rk": "74bd8a797c022ff864706809c6e9b23e9affd1829a093db365178db29b0c2771",
+        "status": "OK",
+        "response": "kept",
+        "expect": {
+         "settled": true
+        }
+       },
+       {
+        "op": "commit",
+        "at": 1791700102,
+        "rk": "74bd8a797c022ff864706809c6e9b23e9affd1829a093db365178db29b0c2771",
+        "singles": [
+         "b7ca97d6cfdfd56ec53af6abd8fd73f6323ce30032b0e46618f7dca7232b6456"
+        ],
+        "expect": {
+         "result": "Replay",
+         "status": "OK",
+         "gate": "replay-with-response",
+         "replayed": true,
+         "scheme_result": null
+        }
+       }
+      ]
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 17,
+     "comment": "reusable only: after the outcome is purged the same credential would run again",
+     "flags": [
+      "Purge"
+     ],
+     "sections": [
+      "6.1"
+     ],
+     "inputs": {
+      "replay_window": 86400,
+      "pending_timeout": 300,
+      "steps": [
+       {
+        "op": "commit",
+        "at": 1791700100,
+        "rk": "rk1",
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       },
+       {
+        "op": "settle",
+        "at": 1791700101,
+        "rk": "rk1",
+        "status": "OK",
+        "expect": {
+         "settled": true
+        }
+       },
+       {
+        "op": "purge",
+        "at": 1791786501,
+        "expect": {}
+       },
+       {
+        "op": "commit",
+        "at": 1791786502,
+        "rk": "rk1",
+        "expect": {
+         "result": "New",
+         "gate": "run-action"
+        }
+       }
+      ]
+     },
+     "result": "valid"
+    }
+   ]
+  },
+  {
+   "type": "ReusableAdmissionWindow",
+   "section": "6.1",
+   "description": "May the gate admit a credential that yields no single-use ID? Only if expires + 60 <= now + replay_window.",
+   "tests": [
+    {
+     "tcId": 18,
+     "comment": "a five-minute offer, a day of outcomes",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "6.1"
+     ],
+     "inputs": {
+      "expires": 1791700400,
+      "now": 1791700100,
+      "replay_window": 86400
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 19,
+     "comment": "expires + 60 equals now + replay_window",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "6.1"
+     ],
+     "inputs": {
+      "expires": 1791786440,
+      "now": 1791700100,
+      "replay_window": 86400
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 20,
+     "comment": "one second too long",
+     "flags": [
+      "Window"
+     ],
+     "sections": [
+      "6.1"
+     ],
+     "inputs": {
+      "expires": 1791786441,
+      "now": 1791700100,
+      "replay_window": 86400
+     },
+     "result": "invalid",
+     "error": "POLICY",
+     "errorCode": 8,
+     "acceptableErrors": [
+      "STALE",
+      "BAD_OFFER"
+     ]
+    },
+    {
+     "tcId": 21,
+     "comment": "replay_window shorter than the offer lifetime plus 60",
+     "flags": [
+      "Window"
+     ],
+     "sections": [
+      "6.1"
+     ],
+     "inputs": {
+      "expires": 1791700400,
+      "now": 1791700100,
+      "replay_window": 300
+     },
+     "result": "invalid",
+     "error": "POLICY",
+     "errorCode": 8,
+     "acceptableErrors": [
+      "STALE",
+      "BAD_OFFER"
+     ]
+    }
+   ]
+  }
+ ]
+}

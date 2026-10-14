@@ -1,0 +1,3476 @@
+{
+ "bnapCases": 1,
+ "area": "offer",
+ "title": "The Offer",
+ "schema": "schema/offer.schema.json",
+ "generator": "conformance/gen_cases.py",
+ "source": "spec/socket-draft-00.md (doc rev 39), spec/ERRATA.md, spec/DECISIONS.md, registry/generated/registry.json, reference/python/bnap_ref.py",
+ "numberOfTests": 139,
+ "header": [
+  "Offers are TLV streams signed by an online offer key (draft-00 section 4).",
+  "Offers are signed with SHA-256(\"bnap test offer key\"), as in vectors.json, and carry a MAC",
+  "under SHA-256(\"bnap test mac key\") unless the case says otherwise. Times are Unix seconds;",
+  "every expiry check allows 60 seconds of skew. A client cannot check the MAC."
+ ],
+ "notes": {
+  "Valid": {
+   "bugType": "BASIC",
+   "description": "A well-formed input every implementation must accept."
+  },
+  "Structure": {
+   "bugType": "MALFORMED",
+   "description": "A record missing, of the wrong length or with a bad value."
+  },
+  "Version": {
+   "bugType": "VERSION",
+   "description": "An unsupported socket version."
+  },
+  "Size": {
+   "bugType": "TOO_LARGE",
+   "description": "Over the size limit."
+  },
+  "ClassRule": {
+   "bugType": "MALFORMED",
+   "description": "An offer no gate may build: a binding-class, metering or quota rule of 4.3, 7, 12 or DECISIONS row 25 is broken. No socket code names this; the cases use MALFORMED, the code a validator reports."
+  },
+  "Signature": {
+   "bugType": "BAD_OFFER",
+   "description": "offer_sig does not verify, or the key is not trusted."
+  },
+  "Mac": {
+   "bugType": "BAD_OFFER",
+   "description": "The MAC does not verify under any current or retained key."
+  },
+  "Expired": {
+   "bugType": "STALE",
+   "description": "Expired, or issued in the future, beyond the 60 s skew."
+  },
+  "Skew": {
+   "bugType": "EDGE",
+   "description": "Exactly at the edge of the 60 s skew allowance."
+  },
+  "Scope": {
+   "bugType": "WRONG_SCOPE",
+   "description": "The offer names another action or route."
+  },
+  "NotOffered": {
+   "bugType": "NOT_OFFERED",
+   "description": "The credential uses a scheme the offer does not list."
+  },
+  "Order": {
+   "bugType": "EDGE",
+   "description": "Two faults at once: the 4.4 order decides the code."
+  },
+  "Tofu": {
+   "bugType": "EDGE",
+   "description": "No pinned manifest: the client trusts on first use."
+  },
+  "Advance": {
+   "bugType": "EDGE",
+   "description": "An offer published in advance: no MAC, issued_at, a key the gate holds."
+  },
+  "UnknownScheme": {
+   "bugType": "BASIC",
+   "description": "An entry whose scheme the client does not know, which it ignores."
+  },
+  "UnknownOdd": {
+   "bugType": "BASIC",
+   "description": "An unknown odd record, ignored by the receiver."
+  },
+  "Native": {
+   "bugType": "BASIC",
+   "description": "Native entries and OfferID invariance."
+  }
+ },
+ "testGroups": [
+  {
+   "type": "OfferParse",
+   "section": "4.1",
+   "description": "Parse an offer and apply every record rule of 4.1.",
+   "tests": [
+    {
+     "tcId": 1,
+     "comment": "draft-00 section 14 route offer",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040fa3a850dff40a2fe54f5662580783b3e4d63fbc3a99ea4832465d60427d849cf31d35c759da7958591b12c2fc51a4aee30288636999720a9813b714d996d2d3af220a29714a6310d1153b6477c0a06e297d0d18f614a52d2bf31926900693620fc13feb2d05e01020a0a",
+      "max_offer": 4096
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "5c8640261f6f1de3206a2e9cd1c2599a2e9256547242061c95f9d2e06cf6696d",
+      "pay": [
+       "bnap:notes"
+      ],
+      "attest": [
+       [
+        "httpsig:web-bot-auth",
+        "discount"
+       ]
+      ],
+      "route_scope": true,
+      "metered": true,
+      "ignored": [
+       3000000001
+      ]
+     }
+    },
+    {
+     "tcId": 2,
+     "comment": "draft-00 section 14 exact offer without native",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "000101022002be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b37170a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100000000000000000000000000000000012232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040dfce109de606bd4bc597d3c88ef1b6dbe27176565d43e4dc2085e7b454f9ba83c63dac273f1097d26fc2744524eadc231f449a6a72230bd7a64d778edaa31e13f220f712cf076123b3454eacb75b140ed905a80601964b81d0d8102895e5c1f737df",
+      "max_offer": 4096
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "919103b562f6bc331a6bdfb9144711fd2fe6d17665a28c0e38dfb3f56a2e7562",
+      "pay": [
+       "payment:lightning/charge"
+      ],
+      "attest": [],
+      "route_scope": false,
+      "metered": false,
+      "ignored": []
+     }
+    },
+    {
+     "tcId": 3,
+     "comment": "draft-00 section 14 exact offer with native",
+     "flags": [
+      "Native"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "000101022002be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b37170a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100000000000000000000000000000000012232200187061796d656e743a6c696768746e696e672f63686172676502011504037361741a242300000206626f6c74313104176c6e62633231306e312e2e2e706c616365686f6c646572f0409cc8071d52049dfdbf05e42d5884ae6fdf08b1b68d891bfbb39a4e5b96bdc45a7f6e102c50ea0e8c866bdac1db147837458f231c94df4ba6ee73773a37f21467f220331c67bae9ffebb79aafe340d6a0f5bbad252dc20448ae03686dd93d829e0399",
+      "max_offer": 4096
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "919103b562f6bc331a6bdfb9144711fd2fe6d17665a28c0e38dfb3f56a2e7562",
+      "pay": [
+       "payment:lightning/charge"
+      ],
+      "attest": [],
+      "route_scope": false,
+      "metered": false,
+      "ignored": []
+     }
+    },
+    {
+     "tcId": 4,
+     "comment": "draft-00 section 14 attestation-only offer (waive, no pay)",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "000101022002be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b37170a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9101001010101010101010101010101010101141312000d68747470617574683a44506f50020101f040bbe949421f0856526626da427f496f92b4f6ebd36ee5f14f8e9e0f469cf83fda4f3836cc38b29329c1e4903aac247869163f8385e545493c9e1a63c7b217f3b6f2200af44dfe41ea08556d334e8cd8abfac399d0c192792363f3109a28a549dda17c",
+      "max_offer": 4096
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "2511ffa46367c79758fe8920996dddd1098ec6aac0bf9e04ae943940f3dadfc8",
+      "pay": [],
+      "attest": [
+       [
+        "httpauth:DPoP",
+        "waive"
+       ]
+      ],
+      "route_scope": false,
+      "metered": false,
+      "ignored": []
+     }
+    },
+    {
+     "tcId": 5,
+     "comment": "version 2",
+     "flags": [
+      "Version"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010202200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040c9276fb356ec46b5696a93a9e892c0e1ad6d5e952bf41634cf0de23be78a69078b0fbf8e73763dfef8b1eb5c9b75c647a9dc94454b3725002e659567037e2a47f22007d289330b30d81aef5d659a1ff5e36d0268d3090fb029699c1b7ab564c46bec",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "VERSION",
+     "errorCode": 1
+    },
+    {
+     "tcId": 6,
+     "comment": "version written with a leading zero byte",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "0002000102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0404bd959fcb01a348be218a4aa6a712f2e4bb4a53d638036d00a809dd191cce3bcbb636619d0491e729aaa290591f79aa9b8b343f31070ec4278e31c972af68e20f220edec46c91b8a9dc066e264b0897a432636e130242fc6c2487e15f3740d14c7e1",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 7,
+     "comment": "version record missing",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "02200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040753373960e65f145398606e72a078458287d7d7a0fa25666827b648b0d85b3209102af1e1051ec80f2abbda3991a5852c7c92d8a4d2f3b83784d9d99f3662cd3f2200dd0deea1402e392e78766c797918e5c35a9cefde565b2a4257116e5fbacf893",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 8,
+     "comment": "scope missing",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "0001010a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401eb7f607ed72b143e0a548b49bef5bf3d448147d7f3f8c7cb6ba05b8765afece858c04b83d7119b74e5d7047183372a1f5f1152e262e0f2a468eec7d0d12cd1ff2206f85913b732672dfc8c946019452d6a7bc5e5c4659c55714753213219bf88c8b",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 9,
+     "comment": "expires missing",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040c8af2c7e684e739d5f382ff8f9aa04c52bd9e33de981da3c8de1dd681ce3af5e7f57842cedd4e441e2ce5139b7acc416c12c57606b6dc16532cf4bd792fa64faf2200ee9ebf3346a57a6cdf4529259ab6bddfac7f3f9a1fbf7d868841011113bcd39",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 10,
+     "comment": "offer_key missing",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c10100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0403247dbaa800774ea11c4948adec760932be28bd9eb8862c94885a81ee32d669d71bcdbf2e95bbf05f5196a8189f3935d611c9baa01d6fa79f9aa7d57d27bf028f22052ab0497b572149782ab435c9dc00b27e4a72450ac7090fe2fe40465241320f9",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 11,
+     "comment": "nonce missing",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add912232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0407411296834fc00edbfa3443105b12067ae73d5fe1db814c4cb0257c0eab2720782d7f11569172f9154d9d77379186e9e5edfb329fb0a6ab3a21e564ca87e996cf220e1035c90c8ff15ea7b4e8cc65ded24531605a2c9401a54ea2195ed01c7d3162a",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 12,
+     "comment": "offer_sig missing",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 13,
+     "comment": "scope of 31 bytes",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "000101021f000000000000000000000000000000000000000000000000000000000000000a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0407ed125c9b5aeed1c83d25ae6d3739bebf9e4c26b3cafbbaf5ecc08af31e94864ff41c79bd825bd99630cf3069610c4267f8efad32dda07edf4f0736ebcb8e846f2203a48c7b42f2ff71fca05e7f6255ac70c005082a06034e8546af6bb0b7ce809f7",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 14,
+     "comment": "offer_key of 33 bytes",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e2100000000000000000000000000000000000000000000000000000000000000000010100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040374d5e33c3d7be5a73f38ab7b4a91d6acae46c745b15a943b932a76d934313c103c0b84f7a1f31a02288bfc2e4579442a528bb6b1c64a2d9257bf8ba73c47badf220a0752b1bb741b3bc6746918d31646f9dc6ffc065475d17ca114dfeba78d6b1a4",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 15,
+     "comment": "nonce of 15 bytes",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9100f00000000000000000000000000000012232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040d134f363bba9b3a9aea0eb830bc3333c3b606c7203d5fd30b5f2fa166511f51445a884fd3c80d179e0944652aa401c481682bb9256d6c1736dd42530cd1c3a12f220b22198301107f9e199e213204973c1411ba7403785613ef9e369e5cf0cead1a8",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 16,
+     "comment": "offer_sig of 63 bytes",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f03f1bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a57f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 17,
+     "comment": "mac of 31 bytes",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f21f7e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 18,
+     "comment": "route_scope flag with a value",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a004010108000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040d76ab7fbb47dcc3448c5d851109372f8e0fa4cf00d1ca8e065feddb5163d42ef936d1209204ee382235e13ebe162bb23ce9004c946054c68f3d843cb3402112df2205675446e08bc267df5a56220ec436291b1453de62098170275cb383b2d2972b1feb2d05e01020a0a",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 19,
+     "comment": "metered flag with a value",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a004000801010a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f0407f4c93ebc3f4edbedf995226641526b02d97bf558013b83c09ded400142f860919810aff40be89009977c176dc5039545b0975645b56ad70a3e4d21762540485f220e34fcaeecd1d9cb4c9e9b681491841ab6477ad46ce3861d7f2fa543ad45f8d5afeb2d05e01020a0a",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 20,
+     "comment": "expires with a leading zero byte",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a05006acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040a2ae92f28fc971826c079840c4a0644e9a90c3b960e82115c561ee3ec5238ac4cfe2a6d599ff21cf4eac14d933b323dd91c237b5784582b662b9dc161323ae25f220e4cd55d6e47d36089315581a35000855681264eb0045fc465fc3d6dc1c60ea58",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 21,
+     "comment": "headers record, two lower-case names",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf9606186163636570742c616e7468726f7069632d76657273696f6e0a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0403562874c21e2f0aa1a3e539e2e5d53464e9a9945f12c32a846365fb3477ee12c68f8ab77c396e0d5bcd6fc8951d29ed587daa7563954de06c03082148e3dc18ff220731e7ad6117c4f154f4b7ebded4fc9ea4fa367d92993fff8116cef198f1de3e4",
+      "max_offer": 4096
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "4d1624906ae4e2d34ded791d4bdf53248a86d93f341b8b0f2ec3c9fde634d2b4",
+      "pay": [
+       "payment:lightning/charge"
+      ],
+      "attest": [],
+      "route_scope": false,
+      "metered": false,
+      "ignored": []
+     }
+    },
+    {
+     "tcId": 22,
+     "comment": "headers record with an upper-case name",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf9606064163636570740a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f04000f5fd36d2fdc3afa09eb3ae9b37b21ef148958d568b8e82f3f8badd8fa00f053e3535d9768e3fc0cd1bccb1c3cb9e4f8f3ae8eb75d4c65ffc77addfbbf87ca9f220c33808b6c9b536bc74ad0a0835f1382ebbc42e7121cde9ebd402f2974c23e7a4",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 23,
+     "comment": "headers record with a space after the comma",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96060b6163636570742c20782d610a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401710cdfb7b3bf16e16debf6179fb0b4ed80cb09760485aede38d557feb2db169724022f52b9865eb8b9e722d6bf5faa00cc292f9c4db9e5ec9f390b794a48432f220321adeb949a99fc04e17e62b9a6f77c8618c329793cf8a484890277e61312a64",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 24,
+     "comment": "info that is not UTF-8",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0c02fffe0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f04025078962cf76ec457f1014a7cbab4af61fd1bcef36b04afa831e0a270dc4100eef527224672b563e95a47a2cf6333b977e3a5707fdb6b5f22a653a2b70b439a1f2202b7ba4fa4ddaa6f896beeb8e56c91e9e31fcdff263dccf8104ab8974c61d8e0a",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 25,
+     "comment": "no pay and no waive",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9101007070707070707070707070707070707141716000d68747470617574683a44506f5002010204021388f040ed5773268c890fb780ea77fbf4c82642551d6f07ea782de75be2d22b69e0001e08c1b6f36417c9030d2ed265af41ad9e86eb22ee327d9b5f01fb6e52b9467a82f220c38e731fff79a95cb7449183c85cfbab857569f26b41c5880a879160e2533d5e",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 26,
+     "comment": "no pay, one waive",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9101007070707070707070707070707070707141312000d68747470617574683a44506f50020101f040074f3995046d865edb940b26ea1c4081fce1d1ca90eff9c3cd60269810b3b0c7fe7541459914edab90862a3945d2dc0f8e3b2e3484b59d4c91858f13cdb38827f220efbda5092ef80ab336bec7ea299b7c6bfe45bbbfb3ed276492a6d32cb04eeefa",
+      "max_offer": 4096
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "7031850d58b4bb27e856d501f05c1cf8483189538826d9c7233227557e5d1337",
+      "pay": [],
+      "attest": [
+       [
+        "httpauth:DPoP",
+        "waive"
+       ]
+      ],
+      "route_scope": false,
+      "metered": false,
+      "ignored": []
+     }
+    },
+    {
+     "tcId": 27,
+     "comment": "pay entry without scheme",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010070707070707070707070707070707071209080201150403736174f040908c38a60bfcd69e76873d08ccb15dddde39d6dbe7af81580891885a834c395687704dda15506da0507996f382236b8d50910583227546e1e1cf66db7656fd91f22034ed80d159181de4eb451ebe9adea06a793547e82cef4d4f1b319103d858b846",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 28,
+     "comment": "pay entry without amount",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712201f00187061796d656e743a6c696768746e696e672f6368617267650403736174f0405f32dcf773b7eb32bb9743295068953b641bc0dea9cc3bf2dcd08e3050744344b57b34a156316ac3662b08547737935bc0ae32f87cc116b5b85ec8dd9f6897cff220df42a917dd2f6af1eecf598c01db8fe31a0d27f8a008d4e208bdb9c18f77b1c6",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 29,
+     "comment": "pay entry without unit",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9101007070707070707070707070707070707121e1d00187061796d656e743a6c696768746e696e672f636861726765020115f040b4c4d580b9050a30939a27ee6e792db8fd4a647dc4938afd9bdd495290450798f52d7f69a61d92eb4de5e7f1ab183063621b2c242e70234c5e292ae58263c8dcf22055382d451e015bf9aa7c0ee3bf5dd12bc2588d7ade84907c67c6628e713294f5",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 30,
+     "comment": "pay entry amount with a leading zero byte",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712242300187061796d656e743a6c696768746e696e672f636861726765020200150403736174f04056c25b8ea7bb3ac5a9c113624737f2756e1a39a09174db2c270558eacf024b3cf87ffed4710046207c97021e28f3ee383e5f94693a2c5678aca6b5c99f50b8c3f220421dbaaec9c53ff3192b11bed5919deba1743032f7851c953fa0072cc15ef6b5",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 31,
+     "comment": "the same scheme twice in pay",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712462200187061796d656e743a6c696768746e696e672f63686172676502011504037361742200187061796d656e743a6c696768746e696e672f6368617267650201160403736174f04016c276098049c70163e745042e62dd982e6f4b464ad811e6c907f4e714eb95fc7f9f60fe30c30095922192433e2f3a1a8baaf3dd7763c975e589aa7031f1acb0f220434fddc32e4335288a1767de9940612ada625b9c31c1af42ea24559fc376fd43",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 32,
+     "comment": "quote_expires after expires",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712292800187061796d656e743a6c696768746e696e672f636861726765020115040373617406046acb2d4df04091b0dcac61d46cd33f5478b25aee5415a85ff0294b7372c490e079cacbffeaba9daa8342b4a23bf1c084d648ab08122e20d1aa8e80aaf2a07f4e2d7e2ef41ce2f220d81eb4ec424759a5a24bf5652591c05deeb03a20cd5b2635d655ff6a3167ab07",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 33,
+     "comment": "quote_expires equal to expires",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712292800187061796d656e743a6c696768746e696e672f636861726765020115040373617406046acb2d4cf0407ec2c3f7d469831f9842bd80fa4aebcf9ccfcebe0fd883fb8da742b1498605a73c196a749594c12a52ab18a745c2364c9d3039dd238ee5d15fa9ff279efb74bdf220fc5392e55fcfcd183825499eced0c7344a111b4a48628df6b6357ee993114313",
+      "max_offer": 4096
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "0431e2c5b37335f869f95ca89c90063635bc5932cb044d2b8f630f9aa313aba8",
+      "pay": [
+       "payment:lightning/charge"
+      ],
+      "attest": [],
+      "route_scope": false,
+      "metered": false,
+      "ignored": []
+     }
+    },
+    {
+     "tcId": 34,
+     "comment": "metered offer whose entry has no rate",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1",
+      "7"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121615000a626e61703a6e6f746573020208340403736174141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040051e49ac5f373f49d4fe167089f30f8d44f6a17b95bcbc5075d467280cc3dca44dcc4856f5c2af6567485165191b740f933658b96f2add4fb95def33bc88d2a3f2201519416d3eda2315d34eb8f9a33596126838025c03a66c9c36d2575a72b1149bfeb2d05e01020a0a",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 35,
+     "comment": "empty unit",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712201f00187061796d656e743a6c696768746e696e672f6368617267650201150400f0404e4a2c5e48e9379948cf649e574b32ac5f93733d46e44ff3e2628bd5ed6dd71dd91bfdcbb1963c96d002ce37e43c5d55a7d7020ba355aa0a8554da9baf5f1aa5f2207cac104240e120beff54a5e51991c652f49227d7760d8523988182b8c2d58291",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 36,
+     "comment": "attest entry: effect 4",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141312000d68747470617574683a44506f50020104f040e6bfe69e2499323922eb390699b10ae7c596969f11a3777dc39fdba414e9c7a00eacc025738e6b1d3cd29506837c871d3a0b04c2f239d37d14cdf334072d10b9f220d8b4f0ae4a44d73725941138f22b9d75f3f500ccb7f7f6952e7f563a81b61fed",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 37,
+     "comment": "attest entry: discount of 0 basis points",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141514000d68747470617574683a44506f500201020400f04044d2719ef8011b41d0d708061a03146cbba0ede89980508174e22ed0588b1ff94aceeedd9dcb086f24b26a4bb05451fe724175c5ab33b80a5cae4209ec1e8dd4f22094432414dec61e591117139c57fd5d066913c81ea5f1489ca373d2c92bbd449b",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 38,
+     "comment": "attest entry: discount of 10,001 basis points",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141716000d68747470617574683a44506f5002010204022711f0409a2c6ee0a08d8d76ff69a3828e32a4be41710d20bddfce73f545b889cab1803a7e90c1bbc11c5bcfe735279b8746012feb0ebf4d3761d5269723ef13467b937ff220f619bd7a69aade082c44b7cd8446b5451e7a7c81fdfab57eb5e8b7570a6bc8ef",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 39,
+     "comment": "attest entry: discount without a value",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141312000d68747470617574683a44506f50020102f040fccd7e0ffe217505966b2d238d64d7719ad145f9d44ddd294250ff68eceaf9dd948581b365d3d32e4ac8024db6d93ba67b073f327bb0e7084212fbd72ebb3e91f2202f7e3b1de4903f0961a8248578bcd3bb70df6100d4fcfca25da8e07f416d4dcf",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 40,
+     "comment": "attest entry: discount of 10,000 basis points",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141716000d68747470617574683a44506f5002010204022710f040c5b1799e3198698e125d65dd6f3a6de072e7ef81acd85d04bddec48535f4b5c368b1db76599458a220d945d2b1d64b42789c63acbb8dd08dde9f5acb11f32ea2f220271f35c9566ff2cd146cdf137fff9374e9ec4268dd7ae5dc8fa6365944d9c709",
+      "max_offer": 4096
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "efff6c7a87edfc78b79497ca3b1ef107b7c00cae00290808808b1f5e1eb3252a",
+      "pay": [
+       "payment:lightning/charge"
+      ],
+      "attest": [
+       [
+        "httpauth:DPoP",
+        "discount"
+       ]
+      ],
+      "route_scope": false,
+      "metered": false,
+      "ignored": []
+     }
+    },
+    {
+     "tcId": 41,
+     "comment": "attest entry: discount of 1 basis point",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141615000d68747470617574683a44506f50020102040101f04086b42ce6e1198d4eb06b60968ed9ca2e1679c156d6982e9270ea3612da645891aa0ee6f9de1c269e7963ab2651d289fec4b2bf11c787d41b5bfd4e77c4a4c83cf2203c1c23be9367aa51ca9d7afbb658528acac0a49124b003e786b595579ea0c0dd",
+      "max_offer": 4096
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "aafa94d2d25282e81c17b642d812b6b6218fe388e75b863d2a8db938aaca85f5",
+      "pay": [
+       "payment:lightning/charge"
+      ],
+      "attest": [
+       [
+        "httpauth:DPoP",
+        "discount"
+       ]
+      ],
+      "route_scope": false,
+      "metered": false,
+      "ignored": []
+     }
+    },
+    {
+     "tcId": 42,
+     "comment": "attest entry: quota of 0 actions",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141817000d68747470617574683a44506f50020103040006013cf04036320f8a72022f7141ee4d9f5b9c905f5435dd5c846d52d19846cb45932ef3b0ff722b753631541db866fe5d7d72776d53214579e7775ee5ae0b5d1969ec19f0f2202cb7f6cec7e975c8def3ebf893f6f81f1ebdfa849af09bd8c2bf3b8c167a8da8",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 43,
+     "comment": "attest entry: quota with an epoch of 0",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141817000d68747470617574683a44506f500201030401050600f04014f597877ed71909ec2ea1a1277f195cbc21b4ab6c2ac6ce5a3229fb3e9b46c886cdc4b58c4e32030a8b8986f1fe1d7e9893e1162b54c419da987eab56482a53f2203743402fbfe9eedcfeef1dfeb895d22f36da073599fdcedc93fdcff49c5ce166",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 44,
+     "comment": "attest entry: quota without an epoch",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141615000d68747470617574683a44506f50020103040105f040e85840d1b9bf86ac1d900465bd535b0d991ac76f4d9aab9a68375f0688ed27f9dd5b389bac325ac1011fa2e638888bf34375449087d2e0a856302aec6cdc98aaf2203cffbb2ae0c23c4e36f6c0b7dd519948f628c5cc4252e5a598d7cd4646e81a18",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 45,
+     "comment": "attest entry: quota of 1 action per second",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141918000d68747470617574683a44506f50020103040101060101f0407a2842a97bea5499e4f268f9ac48efe6278c10d711e48d35e46fb9f047829b13cc7d86fbdd5670832a54746081d7b80fab374dbca3719ae4fb5fc389770b4012f2207c056f2b0683ae653dbc4a75a6609662b330e56336076cbd47d6f02c7d57f1e9",
+      "max_offer": 4096
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "0df99c916d0028731106df6bc33bb4e8478f238f8eb4f88a625175589a22451e",
+      "pay": [
+       "payment:lightning/charge"
+      ],
+      "attest": [
+       [
+        "httpauth:DPoP",
+        "quota"
+       ]
+      ],
+      "route_scope": false,
+      "metered": false,
+      "ignored": []
+     }
+    },
+    {
+     "tcId": 46,
+     "comment": "attest entry without an effect",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f636861726765020115040373617414100f000d68747470617574683a44506f50f040a34aa122776efd08dc4019de604ca5c98beb9f1e049b340d115ad00c92cf0d44e3179e9807c7dd88b5ca5af557438137c5231f1de2d7f51a19e8df9a3cf35dd9f22069ebfabc96e4368d1dd2e9253e0972599e4ca1576a83424cd929cbd0d8eb208c",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 47,
+     "comment": "the same scheme twice in attest",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174142912000d68747470617574683a44506f5002010115000d68747470617574683a44506f5002010204010af04015bf96fdb00ca5640f6c482df1d92a769b1ac4947c2a6855b223df8c4deb8ada6d6bf919391752a2083eb256a1088578f0f73174d928f5b8acf751ac65c5ff85f220707dbffba4689d8e436117c70cd244b2b76f784a04b933b12e8e8031f139d26f",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 48,
+     "comment": "native pay_index past the end of pay",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f63686172676502011504037361741a21200001010206626f6c7431310413696e766f69636520706c616365686f6c646572f040d06533440b2fddfd21668cd0213b6ec01f5653ed0bd441e8e7122f4e46b1518ed39855d2d67fc94feac1b1f0df9512f10bf8d2233a5db8c6dab17ba6944693eef220cc1c15ed878a7e81b42e16c5398d366e5bf9c5b43a26a9476b7cea7074cafc66",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 49,
+     "comment": "native record in a route-scope offer",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.3",
+      "12"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d01a0e0d00000206626f6c743131040178f040c55595adc100401605262d9c21b4707442574505b9c2072ff20a6841f2930129d5fc15b1114c5994716452d3c2859f31f2059936a7822469b42453e3bd4d549ef220d4764cb69aa9d448c4504e876d73d0df83534cbbe2991f02a24eefa913f7a0a1feb2d05e01020a0a",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 50,
+     "comment": "native entry without a kind",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f63686172676502011504037361741a06050000040178f040ee8e266eaf8bbff29d17902a88df587c879a9a591b5702e03cdce5f03bc0b644a28bef305a42b4c74c65336edd5d31386492d3b51c57c8c239d483def6521861f220969b9435e5346608ffb9455c2af320b2c6d8504a36fc8d00e6bc414518687415",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 51,
+     "comment": "pay entry list truncated",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712222200187061796d656e743a6c696768746e696e672f63686172676502011504037361f040a424b140651d5490ff2bfe0ee68b6ba574f1d1579c06de550513c5a96d05dc2821a68b58924e9f313d44a68e5277d4f823ab7d1deef6d7d0a985a32def8f6978f22088bc075d2fd7c6910000df65d771f9d96c005f22711d8b1ddaa6bc201e4f4ef7",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 52,
+     "comment": "unknown odd type 27, covered by the OfferID",
+     "flags": [
+      "UnknownOdd"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f63686172676502011504037361741b0101f04021e6054e1173d3e1137fcb86345825d3bb8683a325396bf5c371f354a63d9f7767a0a6287512416204e270548f6faef464d9be0f5adc0a8fcba5b22c2615e56bf220e74590332923785deb8f051c87b982e88aa1d616996639bcea4a7616603d8ffe",
+      "max_offer": 4096
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "c5fd85f03f0c873e05299df40037d8abffe99f68d900504711bdf2fda966653c",
+      "pay": [
+       "payment:lightning/charge"
+      ],
+      "attest": [],
+      "route_scope": false,
+      "metered": false,
+      "ignored": [
+       27
+      ]
+     }
+    },
+    {
+     "tcId": 53,
+     "comment": "exactly 4,096 bytes",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0400220fb2228736bec14707c350efd47b3103643896ab3d4de5a6c1e20fedc25934d0b911db107dd5d93f6fc9530d709eb25269b35eda95540ebd1cc7d3cb16692f22067aaeeb8d70f7c1c4f8e4f13da64ee1627134c8489e2c36c17b1c6eb2cc22a7afd03e9fd0f12000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "max_offer": 4096
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "a2eb7d88330600c45bb454d00cada99a8aa0f9581d9604e20139c06df163875d",
+      "pay": [
+       "payment:lightning/charge"
+      ],
+      "attest": [],
+      "route_scope": false,
+      "metered": false,
+      "ignored": [
+       1001
+      ]
+     }
+    },
+    {
+     "tcId": 54,
+     "comment": "4,097 bytes",
+     "flags": [
+      "Size"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040e7622682f8d4adff1c56593ed21906b1ffa7598a23fa6f3b530ed61db641a3ae2184f75b10de4bee64b2f056e21e270b9ad5c6abc09f7db5a8773c4496f55680f220cf8f57fe46cb05392cf0c47a8073a11f26bad42f015980afa38ac56a073f03c2fd03e9fd0f1300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "TOO_LARGE",
+     "errorCode": 3
+    },
+    {
+     "tcId": 55,
+     "comment": "4,097 bytes with max_offer raised to 8,192 by the manifest",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2",
+      "9.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040e7622682f8d4adff1c56593ed21906b1ffa7598a23fa6f3b530ed61db641a3ae2184f75b10de4bee64b2f056e21e270b9ad5c6abc09f7db5a8773c4496f55680f220cf8f57fe46cb05392cf0c47a8073a11f26bad42f015980afa38ac56a073f03c2fd03e9fd0f1300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+      "max_offer": 8192
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "af8c6cf49fe787749c9716e3f06e3027e884de8e85a26a94ab42dca5cc674e95",
+      "pay": [
+       "payment:lightning/charge"
+      ],
+      "attest": [],
+      "route_scope": false,
+      "metered": false,
+      "ignored": [
+       1001
+      ]
+     }
+    },
+    {
+     "tcId": 56,
+     "comment": "4,097 bytes that are also malformed: size is checked first",
+     "flags": [
+      "Size",
+      "Order"
+     ],
+     "sections": [
+      "2",
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040e7622682f8d4adff1c56593ed21906b1ffa7598a23fa6f3b530ed61db641a3ae2184f75b10de4bee64b2f056e21e270b9ad5c6abc09f7db5a8773c4496f55680f220cf8f57fe46cb05392cf0c47a8073a11f26bad42f015980afa38ac56a073f03c2fd03e9fd0f13000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff",
+      "max_offer": 4096
+     },
+     "result": "invalid",
+     "error": "TOO_LARGE",
+     "errorCode": 3
+    }
+   ]
+  },
+  {
+   "type": "OfferRules",
+   "section": "4.3",
+   "description": "Offers no gate may build; the registry gives every binding class.",
+   "tests": [
+    {
+     "tcId": 57,
+     "comment": "route-scope offer with class S and A schemes (section 14)",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.3"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040fa3a850dff40a2fe54f5662580783b3e4d63fbc3a99ea4832465d60427d849cf31d35c759da7958591b12c2fc51a4aee30288636999720a9813b714d996d2d3af220a29714a6310d1153b6477c0a06e297d0d18f614a52d2bf31926900693620fc13feb2d05e01020a0a"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 58,
+     "comment": "route-scope offer listing class O httpauth:L402",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "4.3",
+      "12"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a004000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121918000d68747470617574683a4c343032020208340403736174141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040f83202b1b87269de0cd259a0a7357a71ee910b6e17d2437f5ac31f76b9ac184f5c0cad1f7d3b557902c5de1348c7423e5771c7c7648b19152a7c8ed2e750de6bf22063f745865b4891fe70f9a8985486f69d30b4e09692ea210aef1b38ecbf7be726feb2d05e01020a0a"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "class-O-in-route-offer:httpauth:L402"
+    },
+    {
+     "tcId": 59,
+     "comment": "route-scope offer listing class none httpauth:Bearer as an attestation",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "4.3",
+      "12"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141413000f68747470617574683a4265617265720200f040c2eaee30b5e47f863bf02ccf24f598b5e15bab09f5fd895f7d81d8e98505b51c53070d8a931718386844e91191b7f70d75ca444dad4b6e81050f01a9f7fcaaeff2200acd93c043a54b5bc218a8939c1952d6e6c2b93825f83b78c80cbccedd523f9bfeb2d05e01020a0a"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "class-none-in-route-offer:httpauth:Bearer"
+    },
+    {
+     "tcId": 60,
+     "comment": "route-scope offer listing an unknown scheme, which clients ignore",
+     "flags": [
+      "UnknownScheme"
+     ],
+     "sections": [
+      "4.3",
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141c1b0013766e642e6578616d706c652e756e6b6e6f776e020102040164f0407dd96c38e01be6406a876cd158341d1ca8b8040d7777666f4eb6a8b362b355d4b5db381219458b6fa9c2cb25629fb499daff4ca65a208eb61ff95b13a357eb4ef22010ff70cc9b020790fbb1526a8c5eda2754bde27ca44abcaea0eec2a0ace35ba6feb2d05e01020a0a"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 61,
+     "comment": "native for class O payment:lightning/charge (section 14)",
+     "flags": [
+      "Native"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "000101022002be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b37170a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100000000000000000000000000000000012232200187061796d656e743a6c696768746e696e672f63686172676502011504037361741a242300000206626f6c74313104176c6e62633231306e312e2e2e706c616365686f6c646572f0409cc8071d52049dfdbf05e42d5884ae6fdf08b1b68d891bfbb39a4e5b96bdc45a7f6e102c50ea0e8c866bdac1db147837458f231c94df4ba6ee73773a37f21467f220331c67bae9ffebb79aafe340d6a0f5bbad252dc20448ae03686dd93d829e0399"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 62,
+     "comment": "native for class S bnap:notes",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "4.1"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9101007070707070707070707070707070707121514000a626e61703a6e6f74657302011504037361741a0e0d00000206626f6c743131040178f040f83d27818e32d51a23675d874865786730359dbef438f0be54400f4705ca452d875f338033d4378d72bc954f5b66c523eef058b5e1301d5a27138f76c650946bf22016fb0f573eff130fe6891f2e59594e7be967934134a0e1cf6bfe96fd1d1cc4e0"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "native-for-class-S:bnap:notes"
+    },
+    {
+     "tcId": 63,
+     "comment": "bearer attestation httpauth:Bearer (class none) trying to discount",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141918000f68747470617574683a426561726572020102040207d0f040f306b964e2999a960303b91ae592939ccc3cb57498d32459da2e8ff0cc995de785ff96c3f68880fd75451d84eb42476e4ab672025d36460e7480c4b411c62f3df2200f816b2ba846469f79235e05f92762a5b178739b265293cc76f9994d2df119d2"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "class-none-discount:httpauth:Bearer"
+    },
+    {
+     "tcId": 64,
+     "comment": "bearer attestation httpauth:Bearer (class none) trying to waive",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141514000f68747470617574683a426561726572020101f04068fe73580186ccb4932f28b7cdb15e845a0aa7ab973c68bb4f5eaddf85eae4c54161db6b466fa9207aa0dcc832cf725d0a2f017dc14017dca0c916159368f49bf22015091188b403fdf26e9a4d501931462f277cb1b044285204ca61561f818c74fc"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "class-none-waive:httpauth:Bearer"
+    },
+    {
+     "tcId": 65,
+     "comment": "bearer attestation httpauth:Bearer (class none) trying to quota",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141b1a000f68747470617574683a42656172657202010304010506013cf04032b6a1152b08624e2d2b7ae639c4e0635c3a10cc294cd9f36eb4340958f1cd6347256d18b649889bf3f3b92173410be8b78a294f49ae92284c8bd64cb40de1a8f220aa4ebc37717d71e0a224c37b34c8b2157d97156b27692820e57d3bfda4461c5a"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "class-none-quota:httpauth:Bearer"
+    },
+    {
+     "tcId": 66,
+     "comment": "bearer attestation httpauth:Bearer as required only",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141413000f68747470617574683a4265617265720200f040ecb734bda1e3c3657ce35337c877d7397e8547ca0a27eb74a34924e0ebc1f97450ce8c4bedc20e39073eb69da42478b691b9ea93923e68983251004e4c0a7e49f22092e00d33fac96f9f42220badc95ac8281cbce43ed5f1a96ea96accd44d8fe113"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 67,
+     "comment": "class O pp:0x0002 discount",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141312000970703a307830303032020102040203e8f04055a2841e563ecf8fa8fd2c396260984f14ca10d5f382abbcb3a6e8dece87f5cc1acfa6f5c1c7b81e20fdea514aeed8e1a1d85b417d8cc6e8c3965376a6683272f22095713e5b18de5905c5e9e0ea39f7a7cbcf91452ee414b1022b37c5af737660d3"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 68,
+     "comment": "class none value scheme cashu:nut22 at price 0",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9101007070707070707070707070707070707121514000b63617368753a6e7574323202000403736174f04034d635d728a3186fecbdc60bc1006d1e3f5ca7ecb19bb437bf949ce9448ef29d53366e4b7534bee2e0bde9f730a7788b54ceb580128540ce9c6a5be2dcde9290f220391d42c3a929eb8ef99dd0251d97241b60c54426fbc953c660081b21f2669bc6"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 69,
+     "comment": "class none value scheme cashu:nut22 at price 1 (DECISIONS row 25)",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9101007070707070707070707070707070707121615000b63617368753a6e757432320201010403736174f040c2aac9a23975f79b4e0708ced2fe80e3127df2611038f89a1d2119ab1aee782e337be81868e5861ee2724822e9aa1a988da8dd5bc6f60bd041a36f58516de1cef22058d528cc1a8cf1a4040eae65fb18835ac4bbae3894fcfa630f8e37e9eaae9d1d"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "class-none-priced:cashu:nut22"
+    },
+    {
+     "tcId": 70,
+     "comment": "metered offer with httpauth:L402, which has neither refund = atomic nor upto",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf9608000a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9101007070707070707070707070707070707121d1c000d68747470617574683a4c3430320202083404037361740a0201f4f040c27b8125e03b12b9a2be9bd6853f1f6d5bec4d8e13d45ff6cec8b62a35f330638497f6ce0aaeaec0d25d717cc9e91e5034b1479391051a875ec8b3e7983a43aaf220930fe9e2e8ac1b8a5af9e29b980abe7524cc614348e5d657f44046f90a6a1144"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "metered-not-refundable:httpauth:L402"
+    },
+    {
+     "tcId": 71,
+     "comment": "metered offer with bnap:notes, refund = atomic",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "7"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040fa3a850dff40a2fe54f5662580783b3e4d63fbc3a99ea4832465d60427d849cf31d35c759da7958591b12c2fc51a4aee30288636999720a9813b714d996d2d3af220a29714a6310d1153b6477c0a06e297d0d18f614a52d2bf31926900693620fc13feb2d05e01020a0a"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 72,
+     "comment": "quota for pp:0x0002, whose registry entry has no quota_id",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "6.2"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141514000970703a30783030303202010304010506013cf0405d7b30a82771922cf61a7e5674d717c1f38c12b7e12d07f66f0543c69c551e7369671396dd31381432c53abfc5e1788cdf42ef9e1dc0594f4607f469465c8168f220d77273b0f6dd67ea564afa1a907f280a5a2afa9a39f88e0347cedff053a03853"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "quota-without-quota-id:pp:0x0002"
+    },
+    {
+     "tcId": 73,
+     "comment": "quota for httpauth:DPoP, quota_id the key thumbprint",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "6.2"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141918000d68747470617574683a44506f5002010304010506013cf0406ae57ffa07b6b2e54b94ffeefd6a6750c7c0c0bc2ce38604450bd57eb9f9f749baa0bdf9f4ab18b0d5351b163b643a2637544d253560f87011d661bf0589aea2f2207b5814de048b49917fdce842012aeb2a3ee81c575fb0e58af0451c795607cdbd"
+     },
+     "result": "valid"
+    }
+   ]
+  },
+  {
+   "type": "OfferIdAndSignature",
+   "section": "4.2",
+   "description": "Recompute the OfferID and check offer_sig.",
+   "tests": [
+    {
+     "tcId": 74,
+     "comment": "exact offer without native: same OfferID, different offer_sig",
+     "flags": [
+      "Native"
+     ],
+     "sections": [
+      "4.2",
+      "14"
+     ],
+     "inputs": {
+      "offer": "000101022002be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b37170a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100000000000000000000000000000000012232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040dfce109de606bd4bc597d3c88ef1b6dbe27176565d43e4dc2085e7b454f9ba83c63dac273f1097d26fc2744524eadc231f449a6a72230bd7a64d778edaa31e13f220f712cf076123b3454eacb75b140ed905a80601964b81d0d8102895e5c1f737df"
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "919103b562f6bc331a6bdfb9144711fd2fe6d17665a28c0e38dfb3f56a2e7562",
+      "offer_sig": "dfce109de606bd4bc597d3c88ef1b6dbe27176565d43e4dc2085e7b454f9ba83c63dac273f1097d26fc2744524eadc231f449a6a72230bd7a64d778edaa31e13",
+      "offer_sig_valid": true
+     }
+    },
+    {
+     "tcId": 75,
+     "comment": "the same offer with a native record: same OfferID, different offer_sig",
+     "flags": [
+      "Native"
+     ],
+     "sections": [
+      "4.2",
+      "14"
+     ],
+     "inputs": {
+      "offer": "000101022002be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b37170a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100000000000000000000000000000000012232200187061796d656e743a6c696768746e696e672f63686172676502011504037361741a242300000206626f6c74313104176c6e62633231306e312e2e2e706c616365686f6c646572f0409cc8071d52049dfdbf05e42d5884ae6fdf08b1b68d891bfbb39a4e5b96bdc45a7f6e102c50ea0e8c866bdac1db147837458f231c94df4ba6ee73773a37f21467f220331c67bae9ffebb79aafe340d6a0f5bbad252dc20448ae03686dd93d829e0399"
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "919103b562f6bc331a6bdfb9144711fd2fe6d17665a28c0e38dfb3f56a2e7562",
+      "offer_sig": "9cc8071d52049dfdbf05e42d5884ae6fdf08b1b68d891bfbb39a4e5b96bdc45a7f6e102c50ea0e8c866bdac1db147837458f231c94df4ba6ee73773a37f21467",
+      "offer_sig_valid": true
+     }
+    },
+    {
+     "tcId": 76,
+     "comment": "route offer: the GREASE record after mac is inside OfferID and offer_sig",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.2",
+      "14"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040fa3a850dff40a2fe54f5662580783b3e4d63fbc3a99ea4832465d60427d849cf31d35c759da7958591b12c2fc51a4aee30288636999720a9813b714d996d2d3af220a29714a6310d1153b6477c0a06e297d0d18f614a52d2bf31926900693620fc13feb2d05e01020a0a"
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "5c8640261f6f1de3206a2e9cd1c2599a2e9256547242061c95f9d2e06cf6696d",
+      "offer_sig": "fa3a850dff40a2fe54f5662580783b3e4d63fbc3a99ea4832465d60427d849cf31d35c759da7958591b12c2fc51a4aee30288636999720a9813b714d996d2d3a",
+      "offer_sig_valid": true
+     }
+    },
+    {
+     "tcId": 77,
+     "comment": "unknown odd type 241 is in the signature range: flipping it changes neither OfferID nor offer_sig",
+     "flags": [
+      "UnknownOdd"
+     ],
+     "sections": [
+      "2",
+      "4.2",
+      "12"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f10100f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "valid",
+     "expected": {
+      "offer_id": "0cb1bc8352a8f6294b12dc7ae17f91e7d89fff835e03666edbc6e1e461a3fedd",
+      "offer_sig": "1bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716",
+      "offer_sig_valid": true
+     }
+    }
+   ]
+  },
+  {
+   "type": "ClientOfferCheck",
+   "section": "4.4",
+   "description": "The client checks of 4.4 for an offer received with a 402.",
+   "tests": [
+    {
+     "tcId": 78,
+     "comment": "exact offer for the request about to be sent",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 79,
+     "comment": "route offer for the manifest route the client expects",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040fa3a850dff40a2fe54f5662580783b3e4d63fbc3a99ea4832465d60427d849cf31d35c759da7958591b12c2fc51a4aee30288636999720a9813b714d996d2d3af220a29714a6310d1153b6477c0a06e297d0d18f614a52d2bf31926900693620fc13feb2d05e01020a0a",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "02be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b3717",
+      "route_scope": "862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 80,
+     "comment": "no pinned manifest: trust on first use",
+     "flags": [
+      "Tofu"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": null,
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 81,
+     "comment": "expires 60 s ago: inside the skew",
+     "flags": [
+      "Skew"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700360,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 82,
+     "comment": "expires 61 s ago",
+     "flags": [
+      "Expired"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700361,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "STALE",
+     "errorCode": 5,
+     "reason": "expired"
+    },
+    {
+     "tcId": 83,
+     "comment": "issued_at 60 s in the future: inside the skew",
+     "flags": [
+      "Skew"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f636861726765020115040373617418046acb2cc0f0405e54259fb87ebd77e639f027dd7946b0c6b05453e98ccc90faacbb1b42912c64804a7b007a4352c770dfef496f021cf15c59f93c6933462e4a89b795f6433073f2207f3835fbd7df17e3578b0b20dde2a552d4c5763627782899e39d0c343957edce",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 84,
+     "comment": "issued_at 61 s in the future",
+     "flags": [
+      "Expired"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f636861726765020115040373617418046acb2cc1f0403e41cb4669dd3e9a9648242fe55394c3184479df386017b84fc00c776edea5252cd52b90888ff677e91e9a8d8481b8c2113920bcaa562e82ceba04db16c0461bf220e76930176c7c02163e6866203f05b66ad1c1e645795a04e6ecdac32588445464",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "STALE",
+     "errorCode": 5,
+     "reason": "issued-in-future"
+    },
+    {
+     "tcId": 85,
+     "comment": "offer_key not in the pinned manifest",
+     "flags": [
+      "Signature"
+     ],
+     "sections": [
+      "4.4",
+      "9.3"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20ceded6bdeac503c2e85327c1218953a478014708e84784b7b6dda9486c20811310100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040a88038668139051e977088c198368172e71c05cfca438b7085a78a312ffd04e332ad7ceb2183179e88fa81126be97de01e15448af255299490df28dc7e33ee2bf220ded265d9d4b80c16910d975f4aad2cf25ab38e5a2fc56875b0611aae7d42a00f",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "offer-key-not-pinned"
+    },
+    {
+     "tcId": 86,
+     "comment": "offer_key pinned with use receipt only",
+     "flags": [
+      "Signature"
+     ],
+     "sections": [
+      "4.4",
+      "9.3"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "offer-key-not-pinned"
+    },
+    {
+     "tcId": 87,
+     "comment": "offer_key pinned but its not_after has passed",
+     "flags": [
+      "Signature"
+     ],
+     "sections": [
+      "4.4",
+      "9.3"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1791700099
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "offer-key-not-pinned"
+    },
+    {
+     "tcId": 88,
+     "comment": "a flipped bit in scope",
+     "flags": [
+      "Signature"
+     ],
+     "sections": [
+      "4.4",
+      "14"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf970a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf97",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "offer-sig"
+    },
+    {
+     "tcId": 89,
+     "comment": "a flipped bit in expires",
+     "flags": [
+      "Signature"
+     ],
+     "sections": [
+      "4.4",
+      "14"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4d0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "offer-sig"
+    },
+    {
+     "tcId": 90,
+     "comment": "a flipped bit in offer_key",
+     "flags": [
+      "Signature"
+     ],
+     "sections": [
+      "4.4",
+      "14"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add810100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "offer-key-not-pinned"
+    },
+    {
+     "tcId": 91,
+     "comment": "a flipped bit in nonce",
+     "flags": [
+      "Signature"
+     ],
+     "sections": [
+      "4.4",
+      "14"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070612232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "offer-sig"
+    },
+    {
+     "tcId": 92,
+     "comment": "a flipped bit in pay",
+     "flags": [
+      "Signature"
+     ],
+     "sections": [
+      "4.4",
+      "14"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736175f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "offer-sig"
+    },
+    {
+     "tcId": 93,
+     "comment": "a flipped bit in offer_sig",
+     "flags": [
+      "Signature"
+     ],
+     "sections": [
+      "4.4",
+      "14"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5717f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "offer-sig"
+    },
+    {
+     "tcId": 94,
+     "comment": "a flipped bit in mac: a client cannot check the MAC",
+     "flags": [
+      "Mac"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c8",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 95,
+     "comment": "info on another origin",
+     "flags": [
+      "Signature"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0c2568747470733a2f2f6576696c2e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f04059bf8fc338a067b09439df4fae0833a1c023c7b4e36729fed5c91db3055d656929eb6e4dedb7338af0df5bc747fabe849c4604ccab9054a9896c5894f1ee2d71f220ab3b09d2df992337a629cde94d8acfd6c2bfe3eac3e1849fbe5561d3211eda48",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "info-cross-origin"
+    },
+    {
+     "tcId": 96,
+     "comment": "info as an origin-relative path",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0c112f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0404b86dc011ab1114c24d767226b2bd7cade921cf827194720626b732fb77a78b4bb6b8db1e0e52104b646b04f3db0e85c9aad5d00623fdaac94a4b8a6f9f1dbabf22059abdd348bf357633e53a5034b890835f7ebdb6ab67c9dfb0df47fe528783a75",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 97,
+     "comment": "info on the same origin with the default port written out",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0c2868747470733a2f2f6170692e6578616d706c653a3434332f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f04058db938bd84735b079e3b4c16a8badc2e29e6cd2f1d491d07037b3200d5a3eb27e0db06a0101c6be1993cb71fa848d5a06a3116eb3979c3037d52be3a3f0f323f22086c47486380e089de136dec051761e38c153f6bf1b7fd898408753d060c9c14f",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 98,
+     "comment": "exact offer for another request",
+     "flags": [
+      "Scope"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "7b08c7ef64058125b4e47798d7f0bb9ce20e326af2157b48190d0a29bd21ffb7",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "WRONG_SCOPE",
+     "errorCode": 6,
+     "reason": "scope-mismatch"
+    },
+    {
+     "tcId": 99,
+     "comment": "route offer for another route",
+     "flags": [
+      "Scope"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040fa3a850dff40a2fe54f5662580783b3e4d63fbc3a99ea4832465d60427d849cf31d35c759da7958591b12c2fc51a4aee30288636999720a9813b714d996d2d3af220a29714a6310d1153b6477c0a06e297d0d18f614a52d2bf31926900693620fc13feb2d05e01020a0a",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "02be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b3717",
+      "route_scope": "66de18a7d65d8be7435f6a4b47829df515c983fdeed959ce9cd0d8ad81229ea5"
+     },
+     "result": "invalid",
+     "error": "WRONG_SCOPE",
+     "errorCode": 6,
+     "reason": "scope-mismatch"
+    },
+    {
+     "tcId": 100,
+     "comment": "an entry with an unknown scheme is ignored, the offer stays usable",
+     "flags": [
+      "UnknownScheme"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712411d0013766e642e6578616d706c652e756e6b6e6f776e02010504037361742200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040f5e4692a4349af7a417a9948318856c1c2114a8c863eb5fb858038a3f8898472129eb07a334317655f52ce3408e5c15796a6266d617d731e85051182c4fd0f93f22033a5718a24f2a7534d093a8a3e993fc3bd5a33ddf748f1dab81fabc0bd7efae8",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 101,
+     "comment": "published in advance: no mac, issued_at present",
+     "flags": [
+      "Advance"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f636861726765020115040373617418046acb2c7af04084e99da9b4124481e43ee9af8ce44b2d13f8e851198eb79cc9b76b138313c61b7345a4da2ec682389c33bd3d0b59cc78c9223a0bf0203e654d03f070c89e807f",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 102,
+     "comment": "no mac and no issued_at",
+     "flags": [
+      "Signature"
+     ],
+     "sections": [
+      "4.1",
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "advance-offer-without-issued-at"
+    },
+    {
+     "tcId": 103,
+     "comment": "bearer attestation trying to discount: no gate may build this offer",
+     "flags": [
+      "ClassRule"
+     ],
+     "sections": [
+      "4.4",
+      "7"
+     ],
+     "inputs": {
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174141918000f68747470617574683a426561726572020102040207d0f040f306b964e2999a960303b91ae592939ccc3cb57498d32459da2e8ff0cc995de785ff96c3f68880fd75451d84eb42476e4ab672025d36460e7480c4b411c62f3df2200f816b2ba846469f79235e05f92762a5b178739b265293cc76f9994d2df119d2",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "class-none-discount:httpauth:Bearer"
+    },
+    {
+     "tcId": 104,
+     "comment": "version 2",
+     "flags": [
+      "Version"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "offer": "00010202200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040c9276fb356ec46b5696a93a9e892c0e1ad6d5e952bf41634cf0de23be78a69078b0fbf8e73763dfef8b1eb5c9b75c647a9dc94454b3725002e659567037e2a47f22007d289330b30d81aef5d659a1ff5e36d0268d3090fb029699c1b7ab564c46bec",
+      "now": 1791700100,
+      "origin": "https://api.example",
+      "pin_keys": [
+       {
+        "kid": "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9",
+        "use": "offer",
+        "not_after": 1792304800
+       },
+       {
+        "kid": "5f49b61a80a8105a2f727c4c53ee1718252b1e8bc05f6c62f0242e56286b83db",
+        "use": "receipt",
+        "not_after": 1792304800
+       }
+      ],
+      "scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null
+     },
+     "result": "invalid",
+     "error": "VERSION",
+     "errorCode": 1,
+     "reason": "unsupported-version"
+    }
+   ]
+  },
+  {
+   "type": "GateOfferCheck",
+   "section": "4.4",
+   "description": "The gate checks of 4.4, steps 1 to 6 in order.",
+   "tests": [
+    {
+     "tcId": 105,
+     "comment": "exact offer for this request",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 106,
+     "comment": "MAC under a retained key",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.2",
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5",
+       "3d54931743008fe68e6da9b285ff7856e01cc64319ca940d697c421986c45fc3"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f220859c9061e94e47bcd368f78ea0b4873974ea03511c19399b3ba3bdf338066ff2"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 107,
+     "comment": "MAC under a key the gate never had",
+     "flags": [
+      "Mac"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5",
+       "3d54931743008fe68e6da9b285ff7856e01cc64319ca940d697c421986c45fc3"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f220f5b94f36da43ad320cd2f154aa3b5459a41955bf2a93bd36d83260599728ed9e"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "mac"
+    },
+    {
+     "tcId": 108,
+     "comment": "a flipped bit in version",
+     "flags": [
+      "Structure"
+     ],
+     "sections": [
+      "4.4",
+      "14"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010002200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "non-minimal-tu64"
+    },
+    {
+     "tcId": 109,
+     "comment": "a flipped bit in scope",
+     "flags": [
+      "Mac"
+     ],
+     "sections": [
+      "4.4",
+      "14"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf97",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf970a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "mac"
+    },
+    {
+     "tcId": 110,
+     "comment": "a flipped bit in expires",
+     "flags": [
+      "Mac"
+     ],
+     "sections": [
+      "4.4",
+      "14"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4d0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "mac"
+    },
+    {
+     "tcId": 111,
+     "comment": "a flipped bit in offer_key",
+     "flags": [
+      "Mac"
+     ],
+     "sections": [
+      "4.4",
+      "14"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add810100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "mac"
+    },
+    {
+     "tcId": 112,
+     "comment": "a flipped bit in nonce",
+     "flags": [
+      "Mac"
+     ],
+     "sections": [
+      "4.4",
+      "14"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070612232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "mac"
+    },
+    {
+     "tcId": 113,
+     "comment": "a flipped bit in pay",
+     "flags": [
+      "Mac"
+     ],
+     "sections": [
+      "4.4",
+      "14"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736175f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "mac"
+    },
+    {
+     "tcId": 114,
+     "comment": "a flipped bit in the GREASE record of the route offer",
+     "flags": [
+      "Mac"
+     ],
+     "sections": [
+      "4.2",
+      "14"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "02be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b3717",
+      "route_scope": "862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0",
+      "pay_scheme": "bnap:notes",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040fa3a850dff40a2fe54f5662580783b3e4d63fbc3a99ea4832465d60427d849cf31d35c759da7958591b12c2fc51a4aee30288636999720a9813b714d996d2d3af220a29714a6310d1153b6477c0a06e297d0d18f614a52d2bf31926900693620fc13feb2d05e01020a0b"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "mac"
+    },
+    {
+     "tcId": 115,
+     "comment": "a flipped bit in offer_sig: the MAC still passes",
+     "flags": [
+      "Mac"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5717f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 116,
+     "comment": "a flipped bit in mac",
+     "flags": [
+      "Mac"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c8"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "mac"
+    },
+    {
+     "tcId": 117,
+     "comment": "published in advance under a key the gate holds and lists",
+     "flags": [
+      "Advance"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f636861726765020115040373617418046acb2c7af04084e99da9b4124481e43ee9af8ce44b2d13f8e851198eb79cc9b76b138313c61b7345a4da2ec682389c33bd3d0b59cc78c9223a0bf0203e654d03f070c89e807f"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 118,
+     "comment": "published in advance under a key the offer names but the gate does not hold",
+     "flags": [
+      "Advance",
+      "Signature"
+     ],
+     "sections": [
+      "4.4",
+      "12"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20ceded6bdeac503c2e85327c1218953a478014708e84784b7b6dda9486c20811310100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f636861726765020115040373617418046acb2c7af0408a2d7626f18185b66f72e51e3d62d5a11bc090c2da3f2ca1e2fe52f113bd7b59ed7eac16413186d772285c0ac2c03bc75727eaa24346b1dfdcac9e8ff99616f8"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "advance-offer-key-not-held"
+    },
+    {
+     "tcId": 119,
+     "comment": "published in advance without issued_at",
+     "flags": [
+      "Advance"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "advance-offer-without-issued-at"
+    },
+    {
+     "tcId": 120,
+     "comment": "published in advance with a broken offer_sig",
+     "flags": [
+      "Advance",
+      "Signature"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f636861726765020115040373617418046acb2c7af04084e99da9b4124481e43ee9af8ce44b2d13f8e851198eb79cc9b76b138313c61b7345a4da2ec682389c33bd3d0b59cc78c9223a0bf0203e654d03f070c89e807e"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "offer-sig"
+    },
+    {
+     "tcId": 121,
+     "comment": "expires 60 s ago: inside the skew",
+     "flags": [
+      "Skew"
+     ],
+     "sections": [
+      "2",
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700360,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 122,
+     "comment": "expires 61 s ago",
+     "flags": [
+      "Expired"
+     ],
+     "sections": [
+      "2",
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700361,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "invalid",
+     "error": "STALE",
+     "errorCode": 5,
+     "reason": "expired"
+    },
+    {
+     "tcId": 123,
+     "comment": "the chosen entry's quote_expires passed",
+     "flags": [
+      "Expired"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712412800187061796d656e743a6c696768746e696e672f636861726765020115040373617406046acb2c2017000d68747470617574683a4c3430320201150403736174f040fb66a6e87aa97dcd80e2dad3adae5a6ab3e709676733f4fc8b50d741f38c1b35f78886e6d4d81c438481d05d382607619354e67f673f7c8f63b0d24d7be49cb4f220e3c2d9f442437f3b0b337c249cf3274f505829b1b137287607e08c12edf457dd"
+     },
+     "result": "invalid",
+     "error": "STALE",
+     "errorCode": 5,
+     "reason": "quote-expired"
+    },
+    {
+     "tcId": 124,
+     "comment": "another entry's quote_expires passed, the chosen one is fine",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "httpauth:L402",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712412800187061796d656e743a6c696768746e696e672f636861726765020115040373617406046acb2c2017000d68747470617574683a4c3430320201150403736174f040fb66a6e87aa97dcd80e2dad3adae5a6ab3e709676733f4fc8b50d741f38c1b35f78886e6d4d81c438481d05d382607619354e67f673f7c8f63b0d24d7be49cb4f220e3c2d9f442437f3b0b337c249cf3274f505829b1b137287607e08c12edf457dd"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 125,
+     "comment": "issued_at 61 s in the future",
+     "flags": [
+      "Expired"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f636861726765020115040373617418046acb2cc1f0403e41cb4669dd3e9a9648242fe55394c3184479df386017b84fc00c776edea5252cd52b90888ff677e91e9a8d8481b8c2113920bcaa562e82ceba04db16c0461bf220e76930176c7c02163e6866203f05b66ad1c1e645795a04e6ecdac32588445464"
+     },
+     "result": "invalid",
+     "error": "STALE",
+     "errorCode": 5,
+     "reason": "issued-in-future"
+    },
+    {
+     "tcId": 126,
+     "comment": "exact offer sent with another request",
+     "flags": [
+      "Scope"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "7b08c7ef64058125b4e47798d7f0bb9ce20e326af2157b48190d0a29bd21ffb7",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "invalid",
+     "error": "WRONG_SCOPE",
+     "errorCode": 6,
+     "reason": "scope-mismatch"
+    },
+    {
+     "tcId": 127,
+     "comment": "route offer for route chat on a request to route images",
+     "flags": [
+      "Scope"
+     ],
+     "sections": [
+      "4.3",
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "02be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b3717",
+      "route_scope": "66de18a7d65d8be7435f6a4b47829df515c983fdeed959ce9cd0d8ad81229ea5",
+      "pay_scheme": "bnap:notes",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040fa3a850dff40a2fe54f5662580783b3e4d63fbc3a99ea4832465d60427d849cf31d35c759da7958591b12c2fc51a4aee30288636999720a9813b714d996d2d3af220a29714a6310d1153b6477c0a06e297d0d18f614a52d2bf31926900693620fc13feb2d05e01020a0a"
+     },
+     "result": "invalid",
+     "error": "WRONG_SCOPE",
+     "errorCode": 6,
+     "reason": "scope-mismatch"
+    },
+    {
+     "tcId": 128,
+     "comment": "route offer on its own route",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "4.3",
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "02be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b3717",
+      "route_scope": "862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0",
+      "pay_scheme": "bnap:notes",
+      "attest_schemes": [
+       "httpsig:web-bot-auth"
+      ],
+      "max_offer": 4096,
+      "offer": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040fa3a850dff40a2fe54f5662580783b3e4d63fbc3a99ea4832465d60427d849cf31d35c759da7958591b12c2fc51a4aee30288636999720a9813b714d996d2d3af220a29714a6310d1153b6477c0a06e297d0d18f614a52d2bf31926900693620fc13feb2d05e01020a0a"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 129,
+     "comment": "pay scheme not in the offer",
+     "flags": [
+      "NotOffered"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "httpauth:L402",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "invalid",
+     "error": "NOT_OFFERED",
+     "errorCode": 7,
+     "reason": "pay-scheme"
+    },
+    {
+     "tcId": 130,
+     "comment": "attestation scheme not in the offer",
+     "flags": [
+      "NotOffered"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [
+       "httpauth:DPoP"
+      ],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "invalid",
+     "error": "NOT_OFFERED",
+     "errorCode": 7,
+     "reason": "attest-scheme"
+    },
+    {
+     "tcId": 131,
+     "comment": "offer by reference, cached",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "5.1",
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {
+       "5c8640261f6f1de3206a2e9cd1c2599a2e9256547242061c95f9d2e06cf6696d": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040fa3a850dff40a2fe54f5662580783b3e4d63fbc3a99ea4832465d60427d849cf31d35c759da7958591b12c2fc51a4aee30288636999720a9813b714d996d2d3af220a29714a6310d1153b6477c0a06e297d0d18f614a52d2bf31926900693620fc13feb2d05e01020a0a"
+      },
+      "action_scope": "02be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b3717",
+      "route_scope": "862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0",
+      "pay_scheme": "bnap:notes",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer_id": "5c8640261f6f1de3206a2e9cd1c2599a2e9256547242061c95f9d2e06cf6696d"
+     },
+     "result": "valid"
+    },
+    {
+     "tcId": 132,
+     "comment": "offer by reference, unknown OfferID",
+     "flags": [
+      "Signature"
+     ],
+     "sections": [
+      "5.1"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {
+       "5c8640261f6f1de3206a2e9cd1c2599a2e9256547242061c95f9d2e06cf6696d": "0001010220862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0040008000a046acb2d4c0c2468747470733a2f2f6170692e6578616d706c652f2e77656c6c2d6b6e6f776e2f626e61700e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add91010000102030405060708090a0b0c0d0e0f121a19000a626e61703a6e6f7465730202083404037361740a0201f4141e1d0014687474707369673a7765622d626f742d61757468020102040207d0f040fa3a850dff40a2fe54f5662580783b3e4d63fbc3a99ea4832465d60427d849cf31d35c759da7958591b12c2fc51a4aee30288636999720a9813b714d996d2d3af220a29714a6310d1153b6477c0a06e297d0d18f614a52d2bf31926900693620fc13feb2d05e01020a0a"
+      },
+      "action_scope": "02be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b3717",
+      "route_scope": "862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0",
+      "pay_scheme": "bnap:notes",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer_id": "262902150c26c4e3efd53a899c096ca7ab467b45d4878d5e5d2428e9be8ded24"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "unknown-offer-id"
+    },
+    {
+     "tcId": 133,
+     "comment": "4,097-byte offer",
+     "flags": [
+      "Size"
+     ],
+     "sections": [
+      "2",
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040e7622682f8d4adff1c56593ed21906b1ffa7598a23fa6f3b530ed61db641a3ae2184f75b10de4bee64b2f056e21e270b9ad5c6abc09f7db5a8773c4496f55680f220cf8f57fe46cb05392cf0c47a8073a11f26bad42f015980afa38ac56a073f03c2fd03e9fd0f1300000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
+     },
+     "result": "invalid",
+     "error": "TOO_LARGE",
+     "errorCode": 3,
+     "reason": "offer-size"
+    },
+    {
+     "tcId": 134,
+     "comment": "order: oversize and malformed gives TOO_LARGE",
+     "flags": [
+      "Order",
+      "Size"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040e7622682f8d4adff1c56593ed21906b1ffa7598a23fa6f3b530ed61db641a3ae2184f75b10de4bee64b2f056e21e270b9ad5c6abc09f7db5a8773c4496f55680f220cf8f57fe46cb05392cf0c47a8073a11f26bad42f015980afa38ac56a073f03c2fd03e9fd0f13000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000ff"
+     },
+     "result": "invalid",
+     "error": "TOO_LARGE",
+     "errorCode": 3,
+     "reason": "offer-size"
+    },
+    {
+     "tcId": 135,
+     "comment": "order: malformed and a bad MAC gives MALFORMED",
+     "flags": [
+      "Order",
+      "Structure"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f63686172676502011504037361741c0100f0403ca830d1a2216b19fdbbaea25e613ad13effa160e3c0a4f255996a6d310bad17456a5bfda77f22f6215f841bb3ca7bc963a6901faf39d74062e043d7295d9b82f2204556fd0132b98a0cdfb34129f19dddcae22da01ca4c54fcdb016f3a156a78385"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2,
+     "reason": "unknown-even-type"
+    },
+    {
+     "tcId": 136,
+     "comment": "order: version 2 and a bad MAC gives VERSION",
+     "flags": [
+      "Order",
+      "Version"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010202200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f040c9276fb356ec46b5696a93a9e892c0e1ad6d5e952bf41634cf0de23be78a69078b0fbf8e73763dfef8b1eb5c9b75c647a9dc94454b3725002e659567037e2a47f22042ff15f93eb8ade7ad1544f45d2b103ef0467f0b7f8d331ce6abcb0e7802d343"
+     },
+     "result": "invalid",
+     "error": "VERSION",
+     "errorCode": 1,
+     "reason": "unsupported-version"
+    },
+    {
+     "tcId": 137,
+     "comment": "order: a bad MAC and expired gives BAD_OFFER",
+     "flags": [
+      "Order",
+      "Mac"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791701300,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f220f5b94f36da43ad320cd2f154aa3b5459a41955bf2a93bd36d83260599728ed9e"
+     },
+     "result": "invalid",
+     "error": "BAD_OFFER",
+     "errorCode": 4,
+     "reason": "mac"
+    },
+    {
+     "tcId": 138,
+     "comment": "order: expired and the wrong scope gives STALE",
+     "flags": [
+      "Order",
+      "Expired"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791701300,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "7b08c7ef64058125b4e47798d7f0bb9ce20e326af2157b48190d0a29bd21ffb7",
+      "route_scope": null,
+      "pay_scheme": "payment:lightning/charge",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "invalid",
+     "error": "STALE",
+     "errorCode": 5,
+     "reason": "expired"
+    },
+    {
+     "tcId": 139,
+     "comment": "order: the wrong scope and a scheme not offered gives WRONG_SCOPE",
+     "flags": [
+      "Order",
+      "Scope"
+     ],
+     "sections": [
+      "4.4"
+     ],
+     "inputs": {
+      "now": 1791700100,
+      "mac_keys": [
+       "ce8f52112081aae10ab851692d3bad45e51f48fa722708dd25015402416aa4b5"
+      ],
+      "listed_offer_keys": [
+       "b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add9"
+      ],
+      "cache": {},
+      "action_scope": "7b08c7ef64058125b4e47798d7f0bb9ce20e326af2157b48190d0a29bd21ffb7",
+      "route_scope": null,
+      "pay_scheme": "httpauth:L402",
+      "attest_schemes": [],
+      "max_offer": 4096,
+      "offer": "00010102200c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf960a046acb2d4c0e20b28dad5f717c5144bdb0aa6db94bb6c79afa9b8bd9bc84825a2c1baafe64add910100707070707070707070707070707070712232200187061796d656e743a6c696768746e696e672f6368617267650201150403736174f0401bf266a37e8e86e80dd18b3f6ac81c9271e47a309c4d0f5c5a0ba65cfc1a65b8da5228d9a5dd73e9fb6d70e32d3c603160d9f430ef6eb76e16c960c8cd5a5716f2207e50927c826fee25dd228aa2eed2df25707bdeb372bce9dd76de4f2c5faa74c9"
+     },
+     "result": "invalid",
+     "error": "WRONG_SCOPE",
+     "errorCode": 6,
+     "reason": "scope-mismatch"
+    }
+   ]
+  }
+ ]
+}

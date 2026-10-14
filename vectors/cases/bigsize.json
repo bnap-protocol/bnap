@@ -1,0 +1,744 @@
+{
+ "bnapCases": 1,
+ "area": "bigsize",
+ "title": "BigSize and tu64",
+ "schema": "schema/bigsize.schema.json",
+ "generator": "conformance/gen_cases.py",
+ "source": "spec/socket-draft-00.md (doc rev 39), spec/ERRATA.md, spec/DECISIONS.md, registry/generated/registry.json, reference/python/bnap_ref.py",
+ "numberOfTests": 41,
+ "header": [
+  "BigSize is the variable-length unsigned integer of BOLT 1 (draft-00 section 2).",
+  "tu64 is a big-endian u64 with leading zero bytes removed; zero is the empty string.",
+  "Non-minimal encodings of either are MALFORMED. Values are decimal strings so that",
+  "64-bit values survive JSON parsers limited to 2^53."
+ ],
+ "notes": {
+  "Valid": {
+   "bugType": "BASIC",
+   "description": "A well-formed input every implementation must accept."
+  },
+  "NonMinimal": {
+   "bugType": "MALFORMED",
+   "description": "A value written in more bytes than its minimal encoding."
+  },
+  "Truncated": {
+   "bugType": "MALFORMED",
+   "description": "The buffer ends inside the integer."
+  },
+  "TrailingBytes": {
+   "bugType": "MALFORMED",
+   "description": "Bytes left after exactly one integer was read."
+  }
+ },
+ "testGroups": [
+  {
+   "type": "BigSizeDecode",
+   "section": "2",
+   "description": "Decode a buffer holding exactly one BigSize.",
+   "tests": [
+    {
+     "tcId": 1,
+     "comment": "minimal encoding of 0",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "00"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "0"
+     }
+    },
+    {
+     "tcId": 2,
+     "comment": "minimal encoding of 252",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fc"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "252"
+     }
+    },
+    {
+     "tcId": 3,
+     "comment": "minimal encoding of 253",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fd00fd"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "253"
+     }
+    },
+    {
+     "tcId": 4,
+     "comment": "minimal encoding of 65535",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fdffff"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "65535"
+     }
+    },
+    {
+     "tcId": 5,
+     "comment": "minimal encoding of 65536",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fe00010000"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "65536"
+     }
+    },
+    {
+     "tcId": 6,
+     "comment": "minimal encoding of 4294967295",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "feffffffff"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "4294967295"
+     }
+    },
+    {
+     "tcId": 7,
+     "comment": "minimal encoding of 4294967296",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "ff0000000100000000"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "4294967296"
+     }
+    },
+    {
+     "tcId": 8,
+     "comment": "minimal encoding of 18446744073709551615",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "ffffffffffffffffff"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "18446744073709551615"
+     }
+    },
+    {
+     "tcId": 9,
+     "comment": "252 in three bytes",
+     "flags": [
+      "NonMinimal"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fd00fc"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 10,
+     "comment": "0 in three bytes",
+     "flags": [
+      "NonMinimal"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fd0000"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 11,
+     "comment": "65535 in five bytes",
+     "flags": [
+      "NonMinimal"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fe0000ffff"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 12,
+     "comment": "252 in five bytes",
+     "flags": [
+      "NonMinimal"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fe000000fc"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 13,
+     "comment": "2^32 - 1 in nine bytes",
+     "flags": [
+      "NonMinimal"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "ff00000000ffffffff"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 14,
+     "comment": "0 in nine bytes",
+     "flags": [
+      "NonMinimal"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "ff0000000000000000"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 15,
+     "comment": "empty buffer",
+     "flags": [
+      "Truncated"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": ""
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 16,
+     "comment": "prefix fd with no value",
+     "flags": [
+      "Truncated"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fd"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 17,
+     "comment": "fd with one byte",
+     "flags": [
+      "Truncated"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fd00"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 18,
+     "comment": "fe with three bytes",
+     "flags": [
+      "Truncated"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "fe000100"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 19,
+     "comment": "ff with seven bytes",
+     "flags": [
+      "Truncated"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "ff00000001000000"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 20,
+     "comment": "two one-byte values",
+     "flags": [
+      "TrailingBytes"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "0000"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    }
+   ]
+  },
+  {
+   "type": "BigSizeEncode",
+   "section": "14",
+   "description": "Encode; the draft-00 section 14 BigSize vector plus the maximum.",
+   "tests": [
+    {
+     "tcId": 21,
+     "comment": "encode 0",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "14"
+     ],
+     "inputs": {
+      "value": "0"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "00"
+     }
+    },
+    {
+     "tcId": 22,
+     "comment": "encode 252",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "14"
+     ],
+     "inputs": {
+      "value": "252"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "fc"
+     }
+    },
+    {
+     "tcId": 23,
+     "comment": "encode 253",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "14"
+     ],
+     "inputs": {
+      "value": "253"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "fd00fd"
+     }
+    },
+    {
+     "tcId": 24,
+     "comment": "encode 65535",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "14"
+     ],
+     "inputs": {
+      "value": "65535"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "fdffff"
+     }
+    },
+    {
+     "tcId": 25,
+     "comment": "encode 65536",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "14"
+     ],
+     "inputs": {
+      "value": "65536"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "fe00010000"
+     }
+    },
+    {
+     "tcId": 26,
+     "comment": "encode 4294967296",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "14"
+     ],
+     "inputs": {
+      "value": "4294967296"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "ff0000000100000000"
+     }
+    },
+    {
+     "tcId": 27,
+     "comment": "encode 18446744073709551615",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "14"
+     ],
+     "inputs": {
+      "value": "18446744073709551615"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "ffffffffffffffffff"
+     }
+    }
+   ]
+  },
+  {
+   "type": "Tu64Decode",
+   "section": "2",
+   "description": "Decode a tu64 value (the whole record value).",
+   "tests": [
+    {
+     "tcId": 28,
+     "comment": "minimal tu64 0",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": ""
+     },
+     "result": "valid",
+     "expected": {
+      "value": "0"
+     }
+    },
+    {
+     "tcId": 29,
+     "comment": "minimal tu64 1",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "01"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "1"
+     }
+    },
+    {
+     "tcId": 30,
+     "comment": "minimal tu64 255",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "ff"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "255"
+     }
+    },
+    {
+     "tcId": 31,
+     "comment": "minimal tu64 256",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "0100"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "256"
+     }
+    },
+    {
+     "tcId": 32,
+     "comment": "minimal tu64 1791700000",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "6acb2c20"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "1791700000"
+     }
+    },
+    {
+     "tcId": 33,
+     "comment": "minimal tu64 18446744073709551615",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "ffffffffffffffff"
+     },
+     "result": "valid",
+     "expected": {
+      "value": "18446744073709551615"
+     }
+    },
+    {
+     "tcId": 34,
+     "comment": "zero written as one byte",
+     "flags": [
+      "NonMinimal"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "00"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 35,
+     "comment": "1 with a leading zero",
+     "flags": [
+      "NonMinimal"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "0001"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 36,
+     "comment": "255 with a leading zero",
+     "flags": [
+      "NonMinimal"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "00ff"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    },
+    {
+     "tcId": 37,
+     "comment": "nine bytes",
+     "flags": [
+      "TrailingBytes"
+     ],
+     "sections": [
+      "2"
+     ],
+     "inputs": {
+      "hex": "010000000000000000"
+     },
+     "result": "invalid",
+     "error": "MALFORMED",
+     "errorCode": 2
+    }
+   ]
+  },
+  {
+   "type": "Tu64Encode",
+   "section": "14",
+   "description": "Encode; the draft-00 section 14 tu64 vector.",
+   "tests": [
+    {
+     "tcId": 38,
+     "comment": "encode 0",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "14"
+     ],
+     "inputs": {
+      "value": "0"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": ""
+     }
+    },
+    {
+     "tcId": 39,
+     "comment": "encode 1",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "14"
+     ],
+     "inputs": {
+      "value": "1"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "01"
+     }
+    },
+    {
+     "tcId": 40,
+     "comment": "encode 256",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "14"
+     ],
+     "inputs": {
+      "value": "256"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "0100"
+     }
+    },
+    {
+     "tcId": 41,
+     "comment": "encode 1791700000",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "14"
+     ],
+     "inputs": {
+      "value": "1791700000"
+     },
+     "result": "valid",
+     "expected": {
+      "hex": "6acb2c20"
+     }
+    }
+   ]
+  }
+ ]
+}

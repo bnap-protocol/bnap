@@ -1,0 +1,771 @@
+{
+ "bnapCases": 1,
+ "area": "http-scope",
+ "title": "HTTP scopes and route matching",
+ "schema": "schema/http-scope.schema.json",
+ "generator": "conformance/gen_cases.py",
+ "source": "spec/socket-draft-00.md (doc rev 39), spec/ERRATA.md, spec/DECISIONS.md, registry/generated/registry.json, reference/python/bnap_ref.py",
+ "numberOfTests": 31,
+ "header": [
+  "action scope = H_bnap/scope/http(lp(method) || lp(target) || lp(content hash, or empty) ||",
+  "BigSize(h) || lp(name) || lp(value) ...); target = manifest origin + request-target as received",
+  "(draft-00 10.1). Several cases differ from a neighbour in one byte of input, and their",
+  "scopes differ: no normalization of any kind."
+ ],
+ "notes": {
+  "Valid": {
+   "bugType": "BASIC",
+   "description": "A well-formed input every implementation must accept."
+  },
+  "NoNormalization": {
+   "bugType": "BASIC",
+   "description": "The input differs from a neighbour only in a form normalization would hide; the scope differs."
+  },
+  "HeaderCombine": {
+   "bugType": "EDGE",
+   "description": "Repeated fields are combined as RFC 9110 5.3 describes. draft-00 does not fix the separator bytes; these cases use a comma and one space."
+  },
+  "Ambiguous": {
+   "bugType": "EDGE",
+   "description": "draft-00 does not settle whether /v1/* matches /v1 itself."
+  }
+ },
+ "testGroups": [
+  {
+   "type": "ActionScope",
+   "section": "10.1",
+   "description": "Compute the HTTP action scope. request_headers are the fields as sent; listed are the route's header names in route order.",
+   "tests": [
+    {
+     "tcId": 1,
+     "comment": "draft-00 section 14: POST /v1/chat/completions with the 10.3 body",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "POST",
+      "origin": "https://api.example",
+      "request_target": "/v1/chat/completions",
+      "content": "7b226d6f64656c223a226d2d31222c226d65737361676573223a5b7b22726f6c65223a2275736572222c22636f6e74656e74223a226869227d5d2c226d61785f746f6b656e73223a3235367d",
+      "listed": [],
+      "request_headers": []
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "02be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b3717",
+      "headers": []
+     }
+    },
+    {
+     "tcId": 2,
+     "comment": "the same with method post: methods are case-sensitive",
+     "flags": [
+      "NoNormalization"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "post",
+      "origin": "https://api.example",
+      "request_target": "/v1/chat/completions",
+      "content": "7b226d6f64656c223a226d2d31222c226d65737361676573223a5b7b22726f6c65223a2275736572222c22636f6e74656e74223a226869227d5d2c226d61785f746f6b656e73223a3235367d",
+      "listed": [],
+      "request_headers": []
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "87b8a376c59cc73b41aa88afd813110d80c47228c853ad1ebbbf12dbeba7568c",
+      "headers": []
+     }
+    },
+    {
+     "tcId": 3,
+     "comment": "GET with no content",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "GET",
+      "origin": "https://api.example",
+      "request_target": "/v1/resource",
+      "content": null,
+      "listed": [],
+      "request_headers": []
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "headers": []
+     }
+    },
+    {
+     "tcId": 4,
+     "comment": "GET with zero-length content: the same as no content",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "GET",
+      "origin": "https://api.example",
+      "request_target": "/v1/resource",
+      "content": "",
+      "listed": [],
+      "request_headers": []
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96",
+      "headers": []
+     }
+    },
+    {
+     "tcId": 5,
+     "comment": "query a=1&b=2",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "GET",
+      "origin": "https://api.example",
+      "request_target": "/v1/resource?a=1&b=2",
+      "content": null,
+      "listed": [],
+      "request_headers": []
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "c1beee3d7669e32a1b912cb0dc47c4022088e961442011508df3e8c623ef9b21",
+      "headers": []
+     }
+    },
+    {
+     "tcId": 6,
+     "comment": "query b=2&a=1",
+     "flags": [
+      "NoNormalization"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "GET",
+      "origin": "https://api.example",
+      "request_target": "/v1/resource?b=2&a=1",
+      "content": null,
+      "listed": [],
+      "request_headers": []
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "4cffb2b9bc71b34de121f03afe82d5465e40eec088411df1f7c5d80606064d4e",
+      "headers": []
+     }
+    },
+    {
+     "tcId": 7,
+     "comment": "path /v1/~user",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "GET",
+      "origin": "https://api.example",
+      "request_target": "/v1/~user",
+      "content": null,
+      "listed": [],
+      "request_headers": []
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "53daf600eb832697ff8032f5baf611c358ea32f85fddad51f1e368e152095af1",
+      "headers": []
+     }
+    },
+    {
+     "tcId": 8,
+     "comment": "path /v1/%7Euser",
+     "flags": [
+      "NoNormalization"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "GET",
+      "origin": "https://api.example",
+      "request_target": "/v1/%7Euser",
+      "content": null,
+      "listed": [],
+      "request_headers": []
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "05ef3ea3d4e654116ee4290e0aa624bc445b056fd723378cfa0f4e941f6857b9",
+      "headers": []
+     }
+    },
+    {
+     "tcId": 9,
+     "comment": "path /v1/%7euser",
+     "flags": [
+      "NoNormalization"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "GET",
+      "origin": "https://api.example",
+      "request_target": "/v1/%7euser",
+      "content": null,
+      "listed": [],
+      "request_headers": []
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "b0d6fc087c255d76678e72f2c8f1af97160f32921460e25cbd7cae697b3f9d23",
+      "headers": []
+     }
+    },
+    {
+     "tcId": 10,
+     "comment": "trailing slash",
+     "flags": [
+      "NoNormalization"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "GET",
+      "origin": "https://api.example",
+      "request_target": "/v1/resource/",
+      "content": null,
+      "listed": [],
+      "request_headers": []
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "9bc61b41c941e4de89e3a3570ab04e17771606b2c494a459019d7a25d1c3f04a",
+      "headers": []
+     }
+    },
+    {
+     "tcId": 11,
+     "comment": "origin with a port",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "GET",
+      "origin": "https://api.example:8443",
+      "request_target": "/v1/resource",
+      "content": null,
+      "listed": [],
+      "request_headers": []
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "9e0353e1c3049dd8f852fb99d9604eaab6c6189db5ac3b27e3b05fb833958d2e",
+      "headers": []
+     }
+    },
+    {
+     "tcId": 12,
+     "comment": "content as sent after content coding",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "POST",
+      "origin": "https://api.example",
+      "request_target": "/v1/chat/completions",
+      "content": "1f8b0800000000000003",
+      "listed": [],
+      "request_headers": []
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "a000ae3c653adf8d33e3d35269e5221b301037127b6a61be9fdb7f539d66fc0a",
+      "headers": []
+     }
+    },
+    {
+     "tcId": 13,
+     "comment": "two listed headers, both present",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "POST",
+      "origin": "https://api.example",
+      "request_target": "/v1/chat/completions",
+      "content": "7b226d6f64656c223a226d2d31222c226d65737361676573223a5b7b22726f6c65223a2275736572222c22636f6e74656e74223a226869227d5d2c226d61785f746f6b656e73223a3235367d",
+      "listed": [
+       "accept",
+       "anthropic-version"
+      ],
+      "request_headers": [
+       [
+        "Accept",
+        "application/json"
+       ],
+       [
+        "anthropic-version",
+        "2023-06-01"
+       ]
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "18717cc8ccefc9fdc1ad439202dee85fd93b92e4ab130821492fa702376699a4",
+      "headers": [
+       [
+        "accept",
+        "application/json"
+       ],
+       [
+        "anthropic-version",
+        "2023-06-01"
+       ]
+      ]
+     }
+    },
+    {
+     "tcId": 14,
+     "comment": "a listed header that is absent has an empty value",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "POST",
+      "origin": "https://api.example",
+      "request_target": "/v1/chat/completions",
+      "content": "7b226d6f64656c223a226d2d31222c226d65737361676573223a5b7b22726f6c65223a2275736572222c22636f6e74656e74223a226869227d5d2c226d61785f746f6b656e73223a3235367d",
+      "listed": [
+       "accept",
+       "anthropic-version"
+      ],
+      "request_headers": [
+       [
+        "Accept",
+        "application/json"
+       ]
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "80450962d7521162718e42212db548f828ae471ecf9b5ee8c12f529dcec2f295",
+      "headers": [
+       [
+        "accept",
+        "application/json"
+       ],
+       [
+        "anthropic-version",
+        ""
+       ]
+      ]
+     }
+    },
+    {
+     "tcId": 15,
+     "comment": "a repeated listed field, combined",
+     "flags": [
+      "HeaderCombine"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "POST",
+      "origin": "https://api.example",
+      "request_target": "/v1/chat/completions",
+      "content": "7b226d6f64656c223a226d2d31222c226d65737361676573223a5b7b22726f6c65223a2275736572222c22636f6e74656e74223a226869227d5d2c226d61785f746f6b656e73223a3235367d",
+      "listed": [
+       "accept"
+      ],
+      "request_headers": [
+       [
+        "Accept",
+        "text/html"
+       ],
+       [
+        "accept",
+        "application/json"
+       ]
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "e148687e08583924f829d5f5ef0e60edb97aba9c98076975d3e52d1ecec78df9",
+      "headers": [
+       [
+        "accept",
+        "text/html, application/json"
+       ]
+      ]
+     }
+    },
+    {
+     "tcId": 16,
+     "comment": "an unlisted header does not enter the scope",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "method": "POST",
+      "origin": "https://api.example",
+      "request_target": "/v1/chat/completions",
+      "content": "7b226d6f64656c223a226d2d31222c226d65737361676573223a5b7b22726f6c65223a2275736572222c22636f6e74656e74223a226869227d5d2c226d61785f746f6b656e73223a3235367d",
+      "listed": [],
+      "request_headers": [
+       [
+        "X-Other",
+        "1"
+       ]
+      ]
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "02be38b55551b02bee2daab2ca3d752e9538cc288f57a6dea67ccaf6971b3717",
+      "headers": []
+     }
+    }
+   ]
+  },
+  {
+   "type": "RouteScope",
+   "section": "10.1",
+   "description": "Compute the HTTP route scope.",
+   "tests": [
+    {
+     "tcId": 17,
+     "comment": "draft-00 section 14",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "origin": "https://api.example",
+      "route_id": "chat"
+     },
+     "result": "valid",
+     "expected": {
+      "route_scope": "862d641e67813f6e78b20a81aa929519e66a978e69e8a4d3e27280990697f3a0"
+     }
+    },
+    {
+     "tcId": 18,
+     "comment": "another route",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "origin": "https://api.example",
+      "route_id": "images"
+     },
+     "result": "valid",
+     "expected": {
+      "route_scope": "66de18a7d65d8be7435f6a4b47829df515c983fdeed959ce9cd0d8ad81229ea5"
+     }
+    },
+    {
+     "tcId": 19,
+     "comment": "another origin",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "origin": "https://api.example:8443",
+      "route_id": "chat"
+     },
+     "result": "valid",
+     "expected": {
+      "route_scope": "8c0b86e725825e9407a5a46d133f0d1012bc89434c012fea4cb67bde34774464"
+     }
+    }
+   ]
+  },
+  {
+   "type": "RouteMatch",
+   "section": "9.1",
+   "description": "Does the request match the route's match string?",
+   "tests": [
+    {
+     "tcId": 20,
+     "comment": "exact path",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "9.1"
+     ],
+     "inputs": {
+      "match": "POST /v1/chat/completions",
+      "method": "POST",
+      "request_target": "/v1/chat/completions"
+     },
+     "result": "valid",
+     "expected": {
+      "matches": true
+     }
+    },
+    {
+     "tcId": 21,
+     "comment": "query ignored",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "9.1"
+     ],
+     "inputs": {
+      "match": "POST /v1/chat/completions",
+      "method": "POST",
+      "request_target": "/v1/chat/completions?stream=1"
+     },
+     "result": "valid",
+     "expected": {
+      "matches": true
+     }
+    },
+    {
+     "tcId": 22,
+     "comment": "other method",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "9.1"
+     ],
+     "inputs": {
+      "match": "POST /v1/chat/completions",
+      "method": "GET",
+      "request_target": "/v1/chat/completions"
+     },
+     "result": "valid",
+     "expected": {
+      "matches": false
+     }
+    },
+    {
+     "tcId": 23,
+     "comment": "method case",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "9.1"
+     ],
+     "inputs": {
+      "match": "POST /v1/chat/completions",
+      "method": "post",
+      "request_target": "/v1/chat/completions"
+     },
+     "result": "valid",
+     "expected": {
+      "matches": false
+     }
+    },
+    {
+     "tcId": 24,
+     "comment": "trailing slash",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "9.1"
+     ],
+     "inputs": {
+      "match": "POST /v1/chat/completions",
+      "method": "POST",
+      "request_target": "/v1/chat/completions/"
+     },
+     "result": "valid",
+     "expected": {
+      "matches": false
+     }
+    },
+    {
+     "tcId": 25,
+     "comment": "one level below /*",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "9.1"
+     ],
+     "inputs": {
+      "match": "GET /v1/*",
+      "method": "GET",
+      "request_target": "/v1/a"
+     },
+     "result": "valid",
+     "expected": {
+      "matches": true
+     }
+    },
+    {
+     "tcId": 26,
+     "comment": "two levels below /*",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "9.1"
+     ],
+     "inputs": {
+      "match": "GET /v1/*",
+      "method": "GET",
+      "request_target": "/v1/a/b"
+     },
+     "result": "valid",
+     "expected": {
+      "matches": true
+     }
+    },
+    {
+     "tcId": 27,
+     "comment": "the directory itself with a slash",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "9.1"
+     ],
+     "inputs": {
+      "match": "GET /v1/*",
+      "method": "GET",
+      "request_target": "/v1/"
+     },
+     "result": "valid",
+     "expected": {
+      "matches": true
+     }
+    },
+    {
+     "tcId": 28,
+     "comment": "a sibling prefix",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "9.1"
+     ],
+     "inputs": {
+      "match": "GET /v1/*",
+      "method": "GET",
+      "request_target": "/v1x/a"
+     },
+     "result": "valid",
+     "expected": {
+      "matches": false
+     }
+    },
+    {
+     "tcId": 29,
+     "comment": "the directory without a slash",
+     "flags": [
+      "Ambiguous"
+     ],
+     "sections": [
+      "9.1"
+     ],
+     "inputs": {
+      "match": "GET /v1/*",
+      "method": "GET",
+      "request_target": "/v1"
+     },
+     "result": "acceptable"
+    }
+   ]
+  },
+  {
+   "type": "ManifestOrigin",
+   "section": "10.1",
+   "description": "The target uses the manifest origin, never the authority the gate sees, so the scope survives a TLS-terminating front.",
+   "tests": [
+    {
+     "tcId": 30,
+     "comment": "seen as api.example",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "manifest_origin": "https://api.example",
+      "seen_authority": "api.example",
+      "method": "GET",
+      "request_target": "/v1/resource"
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96"
+     }
+    },
+    {
+     "tcId": 31,
+     "comment": "seen as 10.0.0.7:8080",
+     "flags": [
+      "Valid"
+     ],
+     "sections": [
+      "10.1"
+     ],
+     "inputs": {
+      "manifest_origin": "https://api.example",
+      "seen_authority": "10.0.0.7:8080",
+      "method": "GET",
+      "request_target": "/v1/resource"
+     },
+     "result": "valid",
+     "expected": {
+      "action_scope": "0c5c339b0fc7426f88736cda459f84cf13c7a58dad26de49d2987a155e1eaf96"
+     }
+    }
+   ]
+  }
+ ]
+}
