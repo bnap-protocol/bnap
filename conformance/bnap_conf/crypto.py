@@ -9,24 +9,117 @@ import hmac
 
 from ._ref import ref
 
+# ---------------------------------------------------------------- Jacobian arithmetic
+
+class _Curve:
+    """Short Weierstrass curve y^2 = x^3 + a x + b over F_p, Jacobian coordinates."""
+
+    def __init__(self, p, a, b, n, g):
+        self.p, self.a, self.b, self.n, self.g = p, a, b, n, g
+
+    def double(self, pt):
+        X, Y, Z = pt
+        p = self.p
+        if Z == 0 or Y == 0:
+            return (0, 1, 0)
+        YY = Y * Y % p
+        S = 4 * X * YY % p
+        M = (3 * X * X + self.a * pow(Z, 4, p)) % p
+        X3 = (M * M - 2 * S) % p
+        return (X3, (M * (S - X3) - 8 * YY * YY) % p, 2 * Y * Z % p)
+
+    def add(self, p1, p2):
+        if p1[2] == 0:
+            return p2
+        if p2[2] == 0:
+            return p1
+        p = self.p
+        X1, Y1, Z1 = p1
+        X2, Y2, Z2 = p2
+        Z1Z1, Z2Z2 = Z1 * Z1 % p, Z2 * Z2 % p
+        U1, U2 = X1 * Z2Z2 % p, X2 * Z1Z1 % p
+        S1, S2 = Y1 * Z2 * Z2Z2 % p, Y2 * Z1 * Z1Z1 % p
+        if U1 == U2:
+            return self.double(p1) if S1 == S2 else (0, 1, 0)
+        H_, R = (U2 - U1) % p, (S2 - S1) % p
+        HH = H_ * H_ % p
+        HHH = H_ * HH % p
+        V = U1 * HH % p
+        X3 = (R * R - HHH - 2 * V) % p
+        return (X3, (R * (V - X3) - S1 * HHH) % p, H_ * Z1 * Z2 % p)
+
+    def mul(self, affine, k):
+        k %= self.n
+        r, q = (0, 1, 0), (affine[0], affine[1], 1)
+        for bit in bin(k)[2:] if k else "":
+            r = self.double(r)
+            if bit == "1":
+                r = self.add(r, q)
+        return r
+
+    def affine(self, pt):
+        if pt[2] == 0:
+            return None
+        p = self.p
+        zi = pow(pt[2], p - 2, p)
+        zi2 = zi * zi % p
+        return (pt[0] * zi2 % p, pt[1] * zi2 * zi % p)
+
+
+_K1 = _Curve(ref.P, 0, 7, ref.N, ref.G)
+
 # ---------------------------------------------------------------- BIP-340
+#
+# The same algorithm as reference/python/bnap_ref.py (schnorr_sign,
+# schnorr_verify, pubkey), with Jacobian arithmetic so a test run does not
+# spend its time in modular inversions. tests/test_vectors.py checks both
+# give identical bytes.
+
+
+def _xb(x):
+    return x.to_bytes(32, "big")
 
 
 def schnorr_pub(sk):
-    return ref.pubkey(sk)
+    return _xb(_K1.affine(_K1.mul(_K1.g, int.from_bytes(sk, "big")))[0])
 
 
 def schnorr_sign(sk, msg, aux=bytes(32)):
-    return ref.schnorr_sign(sk, msg, aux)
+    tg = ref.tagged
+    d0 = int.from_bytes(sk, "big")
+    if not 1 <= d0 < ref.N:
+        raise ValueError("bad secret key")
+    Pt = _K1.affine(_K1.mul(_K1.g, d0))
+    d = d0 if Pt[1] % 2 == 0 else ref.N - d0
+    t = bytes(a ^ b for a, b in zip(_xb(d), tg("BIP0340/aux", aux)))
+    k0 = int.from_bytes(tg("BIP0340/nonce", t + _xb(Pt[0]) + msg), "big") % ref.N
+    if k0 == 0:
+        raise ValueError("nonce is zero")
+    R = _K1.affine(_K1.mul(_K1.g, k0))
+    k = k0 if R[1] % 2 == 0 else ref.N - k0
+    e = int.from_bytes(tg("BIP0340/challenge", _xb(R[0]) + _xb(Pt[0]) + msg), "big") % ref.N
+    return _xb(R[0]) + _xb((k + e * d) % ref.N)
 
 
 def schnorr_verify(pk, msg, sig):
     if len(pk) != 32 or len(sig) != 64:
         return False
-    try:
-        return bool(ref.schnorr_verify(pk, msg, sig))
-    except Exception:
+    Pt = ref._lift_x(int.from_bytes(pk, "big"))
+    r, s_ = int.from_bytes(sig[:32], "big"), int.from_bytes(sig[32:], "big")
+    if Pt is None or r >= ref.P or s_ >= ref.N:
         return False
+    e = int.from_bytes(ref.tagged("BIP0340/challenge", sig[:32] + pk + msg), "big") % ref.N
+    R = _K1.affine(_K1.add(_K1.mul(_K1.g, s_), _K1.mul(Pt, ref.N - e)))
+    return R is not None and R[1] % 2 == 0 and R[0] == r
+
+
+def ref_schnorr_sign(sk, msg, aux=bytes(32)):
+    """The reference encoder's own implementation, for cross-checks."""
+    return ref.schnorr_sign(sk, msg, aux)
+
+
+def ref_schnorr_verify(pk, msg, sig):
+    return bool(ref.schnorr_verify(pk, msg, sig))
 
 
 def key_from_label(label):
@@ -47,29 +140,19 @@ def _inv(x, m):
     return pow(x, m - 2, m)
 
 
+_R1 = _Curve(_P, _A, _B, _N, _G)
+
+
+def _mul(pt, k):
+    return _R1.affine(_R1.mul(pt, k))
+
+
 def _add(p1, p2):
     if p1 is None:
         return p2
     if p2 is None:
         return p1
-    if p1[0] == p2[0] and (p1[1] + p2[1]) % _P == 0:
-        return None
-    if p1 == p2:
-        lam = (3 * p1[0] * p1[0] + _A) * _inv(2 * p1[1], _P) % _P
-    else:
-        lam = (p2[1] - p1[1]) * _inv(p2[0] - p1[0], _P) % _P
-    x3 = (lam * lam - p1[0] - p2[0]) % _P
-    return (x3, (lam * (p1[0] - x3) - p1[1]) % _P)
-
-
-def _mul(pt, k):
-    r = None
-    while k:
-        if k & 1:
-            r = _add(r, pt)
-        pt = _add(pt, pt)
-        k >>= 1
-    return r
+    return _R1.affine(_R1.add((p1[0], p1[1], 1), (p2[0], p2[1], 1)))
 
 
 def _on_curve(pt):
