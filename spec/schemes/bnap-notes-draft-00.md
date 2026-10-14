@@ -256,7 +256,7 @@ Outputs and quote IDs yield no local ID (provisional). The RailId already makes 
 
 ### 7.1 The change cap
 
-When the scheme's `settle` runs, the socket has fixed `charged` (draft-00 6.4, 7): the effective price for a non-metered offer, `min(price(⌈units × rate / 1000⌉), price(amount))` for a metered one, and 0 for a FAILED outcome (provisional reading: draft-00 8.1 sets `charged` to 0 "when nothing was charged", and a FAILED action charges nothing). Admission required `value ≥ price(amount)`, and `charged` never exceeds `price(amount)`, so
+When the scheme's `settle` runs, the socket has fixed `charged` (draft-00 6.4, 7): the effective price for a non-metered offer, `min(price(⌈units × rate / 1000⌉), price(amount))` for a metered one, and 0 for a FAILED outcome (provisional reading: draft-00 8.1 sets `charged` to 0 "when nothing was charged", and a FAILED action charges nothing). A FAILED Response to a metered offer reports `metered_units` 0, the count for which the metering formula of draft-00 7 also gives `charged` 0: ⌈0 × rate / 1000⌉ = 0 and price(0) = 0 (provisional; draft-00 8.1 requires `metered_units` in every Response to a metered offer but does not say what a FAILED action counts, and the byte-exact Response vectors of 18.2 item 6 need one value). Admission required `value ≥ price(amount)`, and `charged` never exceeds `price(amount)`, so
 
 ```
 change = value - charged,        0 ≤ change ≤ value ≤ total of the outputs
@@ -647,7 +647,7 @@ The vectors MUST include:
 5. **Value and fees:** inputs on keysets with nonzero `input_fee_ppk`, showing the rounding of 6.3.
 6. **Settlement:** for each of these outcomes, the `charged` and `metered_units`, the selected indices, the `scheme_result` bytes, and a Response carrying them, naming the notes route offer's OfferID:
    - **Credential 3a, OK, metered:** 850 tokens. ⌈850 × 500 / 1000⌉ = 425, price 425 − ⌊425 × 2,000 / 10,000⌋ = 425 − 85 = 340, `charged` = min(340, 1,680) = 340. Change 2,047 − 340 = 1,707 = 1,024 + 512 + 128 + 32 + 8 + 2 + 1, so `select` (7.2) signs indices 0, 1, 3, 5, 7, 9 and 10. The `scheme_result` is 752 bytes: one 106-byte entry for index 0 and six 107-byte entries, behind a 4-byte record header (7.3).
-   - **Credential 3a, FAILED:** `charged` 0 and `metered_units` 0, the latter a choice of the vector, since draft-00 8.1 requires the record in a metered offer but does not say what a FAILED action counts. Change 2,047, so all 11 indices, 0 to 10, are signed. The `scheme_result` is 1,180 bytes: 106 + 10 × 107 = 1,176 bytes of entries behind a 4-byte header.
+   - **Credential 3a, FAILED:** `charged` 0 and `metered_units` 0, as 7.1 sets for a FAILED outcome (P35); draft-00 8.1 requires the record in a metered offer but does not say what a FAILED action counts. Change 2,047, so all 11 indices, 0 to 10, are signed. The `scheme_result` is 1,180 bytes: 106 + 10 × 107 = 1,176 bytes of entries behind a 4-byte header.
    - **Credential 3b, OK with charge equal to the value:** 4,200 tokens. ⌈4,200 × 500 / 1000⌉ = 2,100, price 2,100 − 420 = 1,680, `charged` = min(1,680, 1,680) = 1,680 = value. Change 0, so no output is signed, `select` returns the empty set, and the Response has no record 16 (7.3).
 
    Both signed sets contain index 0, so the vectors fix its encoding (7.3).
@@ -777,3 +777,4 @@ Each of these is marked "(provisional)" where it is made, and each is open to ow
 | P32 | 7.3 | Required records of `scheme_result` are written even when empty, so the `index` of output 0 is a present empty record; optional empty records are left out; a client reads an absent `index` as 0 |
 | P33 | 2.1 | A non-minimal BigSize or `tu64` inside a notes body or witness is BAD\_CREDENTIAL with `bnap:notes/NON_CANONICAL`, not the socket MALFORMED that draft-00 section 2 names |
 | P34 | 5.4, 8.2 | On a route listed with `"scope": "route"`, a gate MAY also send a per-request exact-scope notes offer that carries a `fund_quote`; draft-00 9.1 is read as the route's default offer set |
+| P35 | 7.1 | A FAILED Response to a metered offer reports `metered_units` 0, which draft-00 8.1 leaves open; the Response vectors of 18.2 item 6 use it |
