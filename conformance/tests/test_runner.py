@@ -128,7 +128,10 @@ class PayerAndProfiles(unittest.TestCase):
         self.assertEqual([r.case.id for r in rr.results if r.status in ("fail", "error")], [])
 
     def test_exit_codes(self):
-        self.assertEqual(run.main(mock_gate.runner_args(self.gate, extra=["--max-wait", "0", "--only", "MAN-SIG"])), 0)
+        # --only that leaves out MUST cases of the profile is incomplete, never conformant.
+        only = mock_gate.runner_args(self.gate, extra=["--max-wait", "0", "--only", "MAN-SIG"])
+        self.assertEqual(run.main(only), run.EXIT_INCOMPLETE)
+        self.assertEqual(run.main(only + ["--allow-skips"]), 0)
         bad = mock_gate.MockGate(faults=["bad-ack"]).start()
         try:
             self.assertEqual(run.main(mock_gate.runner_args(bad, extra=["--max-wait", "0", "--only", "RCPT-ACK"])), 1)
@@ -143,6 +146,33 @@ class PayerAndProfiles(unittest.TestCase):
         with self.assertRaises(SystemExit) as cm:
             run.parse_args(["--target", "http://example.test"])
         self.assertEqual(cm.exception.code, 2)
+
+    def test_only_is_never_conformant(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            args = mock_gate.runner_args(self.gate, report=tmp, extra=["--max-wait", "0", "--only", "OFR-402,MAN-SIG"])
+            rr = run.run(args, quiet=True)
+            self.assertEqual([r.status for r in rr.results], ["pass", "pass"])
+            self.assertEqual(rr.must_skips(), [])
+            profile_must = [c.id for c in run.CASES if "gateway" in c.profiles and c.level == "MUST"]
+            left = [c.id for c in rr.must_not_selected()]
+            self.assertEqual(sorted(left), sorted(set(profile_must) - {"OFR-402", "MAN-SIG"}))
+            self.assertEqual(rr.verdict(), f"incomplete: {len(left)} MUST cases not selected")
+            self.assertEqual(rr.exit_status(), run.EXIT_INCOMPLETE)
+            data = json.loads((pathlib.Path(tmp) / "report.json").read_text())
+            self.assertEqual(data["verdict"], rr.verdict())
+            self.assertEqual(data["exit_status"], run.EXIT_INCOMPLETE)
+            self.assertEqual(data["only"], "OFR-402,MAN-SIG")
+            self.assertEqual(sorted(x["id"] for x in data["must_not_selected"]), sorted(left))
+            self.assertEqual(data["summary"]["must_not_selected"], len(left))
+            page = (pathlib.Path(tmp) / "report.html").read_text()
+            self.assertNotIn("conformant for this profile", page)
+            self.assertIn("MUST cases not selected", page)
+            self.assertIn("<code>ATT-ADMIT</code>", page)
+        # Selecting every MUST case of the profile leaves nothing out.
+        everything = ",".join(c.id for c in run.CASES if "client" in c.profiles)
+        args = mock_gate.runner_args(self.gate, extra=["--max-wait", "0", "--only", everything])
+        args[args.index("--profile") + 1] = "client"
+        self.assertEqual(run.run(args, quiet=True).must_not_selected(), [])
 
 
 if __name__ == "__main__":

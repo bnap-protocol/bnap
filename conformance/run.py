@@ -34,11 +34,11 @@ adapter profile bnap-conf-dpop-1 (bnap_conf/dpop.py). --dpop-token-cmd CMD
 gets the key's JWK thumbprint (base64url) appended and must print an access
 token bound to it; without it the access token is empty.
 
-Exit status: 0 when every MUST case selected ran and passed; 1 when a MUST case
-failed or any case errored; 3 when none failed but some MUST case was skipped
-(the verdict is then "incomplete" and the reports list the skipped IDs);
-2 on a usage error. --allow-skips turns 3 into 0; the reports still list the
-skipped MUST cases.
+Exit status: 0 when every MUST case of the profile ran and passed; 1 when a
+MUST case failed or any case errored; 3 when none failed but some MUST case was
+skipped, or left out by --only (the verdict is then "incomplete" and the
+reports list those IDs); 2 on a usage error. --allow-skips turns 3 into 0; the
+reports still list the MUST cases that did not run.
 Standard library only, Python 3.11 or later. Run with python3 -I.
 """
 import argparse
@@ -1909,22 +1909,36 @@ class RunResult:
         """MUST cases that did not run. A gate is not shown conformant while any remain."""
         return [r for r in self.results if r.status == "skip" and r.case.level == "MUST"]
 
+    def must_not_selected(self):
+        """MUST cases of the profile that --only left out. They did not run either."""
+        ran = {r.case.id for r in self.results}
+        return [c for c in CASES if self.args.profile in c.profiles and c.level == "MUST" and c.id not in ran]
+
+    def incomplete(self):
+        return bool(self.must_skips() or self.must_not_selected())
+
     def failed(self):
         return bool(self.must_failures()) or any(r.status == "error" for r in self.results)
 
     def verdict(self):
         if self.failed():
             return "not conformant"
+        parts = []
         n = len(self.must_skips())
         if n:
-            v = f"incomplete: {n} MUST case{'' if n == 1 else 's'} not run"
-            return v + (" (accepted with --allow-skips)" if self.args.allow_skips else "")
+            parts.append(f"{n} MUST case{'' if n == 1 else 's'} not run")
+        n = len(self.must_not_selected())
+        if n:
+            parts.append(f"{n} MUST case{'' if n == 1 else 's'} not selected")
+        if parts:
+            return "incomplete: " + "; ".join(parts) + (" (accepted with --allow-skips)" if self.args.allow_skips
+                                                        else "")
         return "conformant for this profile"
 
     def exit_status(self):
         if self.failed():
             return EXIT_FAIL
-        if self.must_skips() and not self.args.allow_skips:
+        if self.incomplete() and not self.args.allow_skips:
             return EXIT_INCOMPLETE
         return EXIT_OK
 
@@ -1934,6 +1948,7 @@ class RunResult:
             s[r.status] += 1
         s["must_fail"] = len(self.must_failures())
         s["must_skip"] = len(self.must_skips())
+        s["must_not_selected"] = len(self.must_not_selected())
         s["should_fail"] = sum(1 for r in self.results if r.status == "fail" and r.case.level == "SHOULD")
         return s
 
@@ -1977,7 +1992,8 @@ def parse_args(argv):
     ap.add_argument("--max-spend-sat", type=int, default=100, help="total the payer may spend")
     ap.add_argument("--allow-http", action="store_true", help="allow a plain-HTTP target (test gates only)")
     ap.add_argument("--insecure", action="store_true", help="do not verify the TLS certificate (test gates only)")
-    ap.add_argument("--only", help="comma-separated case IDs")
+    ap.add_argument("--only", help="comma-separated case IDs; a run that leaves out MUST cases of the profile "
+                                   "is incomplete (exit 3), never conformant")
     ap.add_argument("--allow-skips", action="store_true",
                     help="exit 0 even when MUST cases were skipped (the verdict still says incomplete)")
     ap.add_argument("--list", action="store_true", help="list the cases and exit")
@@ -2042,6 +2058,9 @@ def run(argv, quiet=False):
         print("verdict:", rr.verdict())
         if rr.must_skips():
             print("MUST cases not run: " + ", ".join(r.case.id for r in rr.must_skips()))
+        if rr.must_not_selected():
+            print(f"MUST cases not selected by --only: {len(rr.must_not_selected())} "
+                  f"(listed in the reports)")
     return rr
 
 
@@ -2064,6 +2083,9 @@ def write_reports(rr, out):
             "allow_skips": bool(rr.args.allow_skips), "summary": s,
             "must_skipped": [{"id": r.case.id, "section": r.case.section, "reason": r.detail}
                              for r in rr.must_skips()],
+            "only": rr.args.only or None,
+            "must_not_selected": [{"id": c.id, "section": c.section, "title": c.title}
+                                  for c in rr.must_not_selected()],
             "results": [r.to_json() for r in rr.results]}
     (out / "report.json").write_text(json.dumps(data, indent=1) + "\n")
     suites = ET.Element("testsuites", name="bnap-conformance", tests=str(len(rr.results)),
@@ -2103,12 +2125,19 @@ def render_html(rr, s):
                         f'</code></td><td>{e(r.case.section)}</td><td>{e(r.case.level)}</td><td>{e(r.case.title)}'
                         + (f'<div class="d">{e(r.detail)}</div>' if r.detail else "") + "</td></tr>")
     verdict = rr.verdict()
-    vclass = "fail" if rr.failed() else ("skip" if rr.must_skips() else "pass")
+    vclass = "fail" if rr.failed() else ("skip" if rr.incomplete() else "pass")
     skipped = "".join(f'<li><code>{e(r.case.id)}</code> ({e(r.case.section)}) {e(r.detail)}</li>'
                       for r in rr.must_skips())
     skipped_block = (f'<section class="notrun"><h2>MUST cases not run ({len(rr.must_skips())})</h2>'
                      f'<p>Until these run and pass, this report does not show the target conformant.</p>'
                      f'<ul>{skipped}</ul></section>') if skipped else ""
+    left = rr.must_not_selected()
+    if left:
+        items = "".join(f'<li><code>{e(c.id)}</code> ({e(c.section)}) {e(c.title)}</li>' for c in left)
+        skipped_block += (f'<section class="notrun"><h2>MUST cases not selected ({len(left)})</h2>'
+                          f'<p>--only {e(rr.args.only or "")} left these cases of the {e(rr.args.profile)} '
+                          f'profile out. A partial run does not show the target conformant.</p>'
+                          f'<ul>{items}</ul></section>')
     when = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(rr.started))
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -2148,7 +2177,8 @@ payer {e("none" if rr.args.payer == "none" else "command")} &middot; {e(when)}</
 <p class="verdict {vclass}">Verdict: {e(verdict)}</p>
 <div class="sum"><div><b>{s['pass']}</b>passed</div><div><b>{s['must_fail']}</b>MUST failed</div>
 <div><b>{s['should_fail']}</b>SHOULD failed</div><div><b>{s['error']}</b>errors</div>
-<div><b>{s['skip']}</b>skipped</div><div><b>{s['must_skip']}</b>MUST not run</div></div>
+<div><b>{s['skip']}</b>skipped</div><div><b>{s['must_skip']}</b>MUST not run</div>
+<div><b>{s['must_not_selected']}</b>MUST not selected</div></div>
 {skipped_block}
 <div class="wrap"><table><thead><tr><th>Result</th><th>Case</th><th>Section</th><th>Level</th><th>Requirement</th>
 </tr></thead><tbody>
