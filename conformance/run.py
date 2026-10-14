@@ -199,6 +199,16 @@ class Exchange:
     def carried_credential(self):
         return any(k.lower() == "bnap-credential" for k, _ in self.sent_headers)
 
+    def sent_credential(self):
+        """The Credential this exchange sent, parsed, or None."""
+        v = next((v for k, v in self.sent_headers if k.lower() == "bnap-credential"), None)
+        if v is None:
+            return None
+        try:
+            return cr.parse_credential(b64u_decode(v.strip()), 1 << 20)
+        except BnapError:
+            return None
+
     @property
     def code(self):
         return self.error.name if self.error is not None else None
@@ -302,6 +312,8 @@ class Ctx:
         self.spent_sat = 0
         self.dpop_keys = {}
         self.share = {}
+        self.seen_offers = []    # (raw, Offer) of every BNAP offer any response carried
+        self.offers_by_id = {}
 
     def now(self):
         return int(time.time())
@@ -327,9 +339,32 @@ class Ctx:
                 self.log.append(ex)
             return ex
         ex = Exchange(req, headers, res, label)
+        found = []
+        for v in res.headers_all("WWW-Authenticate"):
+            for ch in _safe_challenges(v):
+                if ch.scheme.lower() != "bnap" or "offer" not in ch.params:
+                    continue
+                try:
+                    raw = b64u_decode(ch.params["offer"])
+                    found.append((raw, of.parse_offer(raw, 1 << 20)))
+                except BnapError:
+                    continue
         with self.lock:
             self.log.append(ex)
+            for raw, o in found:
+                self.seen_offers.append((raw, o))
+                self.offers_by_id.setdefault(o.offer_id, o)
         return ex
+
+    def offer_of(self, c):
+        """The Offer a parsed Credential names, inline or by an OfferID seen in this run."""
+        if c.offer is not None:
+            try:
+                return of.parse_offer(c.offer, 1 << 20)
+            except BnapError:
+                return None
+        with self.lock:
+            return self.offers_by_id.get(c.offer_id_ref)
 
     # -------------------------------------------------------- manifest
 
@@ -1718,6 +1753,49 @@ def rcpt_every(ctx):
         raise Skip("no admitted requests")
     bad = [x.label for x in xs if not x.receipt_raw]
     check(not bad, "no receipt on: " + ", ".join(bad[:5]))
+
+def _no_single_use_id(ctx, c):
+    """6.1: a credential that yields no ID under the single model, here one without
+    pay whose attestations all have the reusable or rate model in the registry."""
+    return (c.pay is None and bool(c.attest)
+            and all(ctx.registry.use(s) in ("reusable", "rate") for s in c.attest_schemes))
+
+
+@case("USE-REUSABLE-WINDOW", "6.1", "MUST", "a credential with no single-use ID is admitted only if its offer's "
+      "expires + 60 <= now + replay_window", profiles=WITH_CREDENTIALS)
+def use_reusable_window(ctx):
+    win = ctx.limits()["replay_window"]
+    probs, active, audited = [], 0, 0
+    # Offers that outlive the outcome record (with a minute to spare for clock skew):
+    # a DPoP-only credential under one of them must be refused.
+    for r in ctx.routes():
+        p = ctx.probe(r, fresh=True)
+        for raw, o in p.offers:
+            if not dpop_waive(o) or o.expires + 60 <= ctx.now() + win + 60:
+                continue
+            active += 1
+            req = ctx.make_req(r, leaf="window-" + b64u(os.urandom(4))) if o.route_scope else p.req
+            cred, _, _ = ctx.dpop_credential(req, raw, o)
+            ex = ctx.request(req, credential=cred, label=f"{r.id}: offer outlives replay_window")
+            if ex.receipt() is not None:
+                probs.append(f"{r.id}: a DPoP-only credential was admitted under an offer that expires at "
+                             f"{o.expires}, after now + replay_window = {ctx.now() + win}")
+    # Every admission of the run so far: the rule must have held when it was admitted.
+    for x in list(ctx.log):
+        rc = x.receipt()
+        c = x.sent_credential() if rc is not None else None
+        if c is None or not _no_single_use_id(ctx, c):
+            continue
+        o = ctx.offer_of(c)
+        if o is None:
+            continue
+        audited += 1
+        if o.expires + 60 > rc.settled_at + win:
+            probs.append(f"{x.label}: settled at {rc.settled_at} under an offer that expires at {o.expires}; "
+                         f"with replay_window {win} the outcome record may go first")
+    if not active and not audited:
+        raise Skip("no credential without a single-use ID was admitted, and no offer outlives replay_window")
+    check(not probs, f"{len(probs)} admission(s) break 6.1: " + "; ".join(probs[:3]))
 
 # ================================================================ running
 

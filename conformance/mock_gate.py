@@ -25,6 +25,9 @@ Faults:
   quote-expires-over    exact-scope pay entries carry quote_expires after expires
   native-in-route       route-scope offers carry a native record
   ext-ignored           the gate leaves ext out of the Context (5.2)
+  reusable-window       replay_window drops to 120 s and the 6.1 check is gone, so
+                        DPoP-only credentials are admitted under offers that
+                        outlive their outcome record
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -53,7 +56,7 @@ from bnap_conf.codec import BnapError, b64u, b64u_decode  # noqa: E402
 from bnap_conf.crypto import schnorr_pub, key_from_label  # noqa: E402
 
 FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "bad-ack", "no-dpop",
-          "quote-expires-over", "native-in-route", "ext-ignored")
+          "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -82,12 +85,18 @@ ROUTES = [
      "pay": ["httpauth:L402"], "attest": [WAIVE], "headers": []},
     {"id": "headers", "match": "GET /conformance/headers", "scope": "exact", "price": {"sat": 1},
      "pay": ["httpauth:L402"], "attest": [WAIVE], "headers": ["accept", "x-conformance"]},
+    # Its route offer lives a day, past replay_window: a DPoP-only credential under it
+    # has no single-use ID and must be refused (6.1).
+    {"id": "window", "match": "GET /conformance/window", "scope": "route", "price": {"sat": 1},
+     "pay": ["bnap:notes"], "attest": [WAIVE], "headers": []},
 ]
 ROLES = {"slow": "slow", "fail": "fail", "sse": "sse", "echo": "echo", "short": "short"}
 
 EXACT_TTL = 300
 ROUTE_TTL = 3600
-REPLAY_WINDOW = 86400
+ROUTE_TTLS = {"window": 86400}
+REPLAY_WINDOW = 7200
+FAULT_REPLAY_WINDOW = 120
 PENDING_TIMEOUT = 30
 HTTP_CAP = cr.HTTP_MAX_CREDENTIAL
 
@@ -123,7 +132,8 @@ class MockGate:
         self.mac_key = os.urandom(32)
         self.macaroon_root = os.urandom(32)
         self.mpp_key = os.urandom(32)
-        self.store = st.UseStore(REPLAY_WINDOW, PENDING_TIMEOUT)
+        self.replay_window = FAULT_REPLAY_WINDOW if "reusable-window" in self.faults else REPLAY_WINDOW
+        self.store = st.UseStore(self.replay_window, PENDING_TIMEOUT)
         self.cache = {}
         self.route_offers = {}
         self.invoices = {}
@@ -168,7 +178,7 @@ class MockGate:
              "required": True,
              "keys": [{"kid": schnorr_pub(self.offer_sk).hex(), "use": "offer", "not_after": na},
                       {"kid": schnorr_pub(self.receipt_sk).hex(), "use": "receipt", "not_after": na}],
-             "limits": {"replay_window": REPLAY_WINDOW, "pending_timeout": PENDING_TIMEOUT,
+             "limits": {"replay_window": self.replay_window, "pending_timeout": PENDING_TIMEOUT,
                         "max_offer": 4096, "max_credential": 16384, "max_response": 8192},
              "carriers": ["http"], "routes": self.routes}
         return mf.jcs(mf.sign_manifest(m, self.root_sk))
@@ -188,6 +198,7 @@ class MockGate:
             if cur and cur[1] > now + 60:
                 return cur[0]
             unit, amount = next(iter(route["price"].items()))
+            ttl = ROUTE_TTLS.get(route["id"], ROUTE_TTL)
             pay = []
             for s in route["pay"]:
                 if REG.binding(s) in ("S", "A"):
@@ -198,14 +209,14 @@ class MockGate:
                                        timestamp=now)
                 native = [of.native_entry(0, "bolt11", inv.encode())]
             fields = of.offer_fields(scope=hp.route_scope(self.origin, route["id"]), route_scope=True,
-                                     metered=bool(route.get("metered")), expires=now + ROUTE_TTL,
+                                     metered=bool(route.get("metered")), expires=now + ttl,
                                      info=self.origin + "/.well-known/bnap", offer_key=schnorr_pub(self.offer_sk),
                                      nonce=os.urandom(16), pay=pay, attest=self._attest_entries(route, ("S", "A")),
                                      native=native, extra=[(3000000001 + 2 * (now % 400), os.urandom(2))])
             raw = of.sign_offer(fields, self.offer_sk, self.mac_key)
             oid = of.offer_id_of(raw)
             self.cache[oid] = raw
-            self.route_offers[route["id"]] = (raw, now + ROUTE_TTL)
+            self.route_offers[route["id"]] = (raw, now + ttl)
             return raw
 
     def exact_offer(self, route, scope, headers, now):
@@ -414,7 +425,7 @@ class MockGate:
             raise GateError(adm.code)
         if adm.quota_index is not None:
             counters.append(attests[adm.quota_index]["_key"])
-        if not singles and not o.expires + 60 <= now + REPLAY_WINDOW:
+        if not singles and not o.expires + 60 <= now + self.replay_window and "reusable-window" not in self.faults:
             raise GateError("POLICY", "offer outlives the outcome record")
         rk = cr.replay_key(ctx, c.pay_body, c.attest_bodies, ids)
         return self._commit_and_run(route, target, headers, body, o, rk, dg, singles, counters, attests, adm,
@@ -617,6 +628,7 @@ FAULT_CASES = {
     "quote-expires-over": "OFR-PARSE",
     "native-in-route": "OFR-ROUTE-CLASSES",
     "ext-ignored": "ATT-EXT-BOUND",
+    "reusable-window": "USE-REUSABLE-WINDOW",
 }
 
 # Fault sets under which no admission is reachable without a payer: the runner
