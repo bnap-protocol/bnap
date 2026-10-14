@@ -41,6 +41,7 @@ Faults:
   scope-from-host       the action scope is built from the Host field, not the manifest origin
   top-odd-in-digest     unknown odd records at the top level of the Credential enter the Digest
   scope-before-expiry   the offer checks run authenticity, then scope, then expiry (4.4 order broken)
+  offer-version-masked  the MAC is checked before the offer version, so a version 2 offer is BAD_OFFER
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -72,7 +73,7 @@ FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "b
           "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window", "late-expiry",
           "nonce-reuse", "no-receipt-on-failed", "nested-odd-rejected", "nested-odd-in-rk", "nested-even-ignored",
           "ext-even-ignored", "offer-size-unchecked", "htu-from-host", "scope-from-host", "top-odd-in-digest",
-          "scope-before-expiry")
+          "scope-before-expiry", "offer-version-masked")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -415,6 +416,8 @@ class MockGate:
                     act = peek.scope
             except BnapError:
                 pass
+        if "offer-version-masked" in self.faults and c.offer is not None and _offer_version(c.offer) not in (None, 1):
+            raise GateError("BAD_OFFER", "mac (checked before the version)")
         late = {"late-expiry", "scope-before-expiry"} & self.faults
         check_now = self._before_expiry(c, now) if late else now
         try:
@@ -661,6 +664,14 @@ def _blank_ext(raw):
     return codec.tlv_unsorted([(r.type, b"" if r.type == 10 else r.value) for r in recs]), ext
 
 
+def _offer_version(raw):
+    """For offer-version-masked: record 0 of an offer, or None if it does not parse that far."""
+    try:
+        return codec.parse_tu64(codec.as_dict(codec.parse_stream(raw))[0])
+    except (BnapError, KeyError):
+        return None
+
+
 def _top_odd_records(c):
     """For top-odd-in-digest: the unknown records at the top level of the Credential, as bytes."""
     return b"".join(codec.bigsize(r.type) + codec.lp(r.value) for r in c.records if r.type not in cr.CRED_TYPES)
@@ -752,6 +763,7 @@ FAULT_CASES = {
     "scope-from-host": "SCOPE-MANIFEST-ORIGIN",
     "top-odd-in-digest": "ATT-UNKNOWN-ODD",
     "scope-before-expiry": "ERR-EXPIRY-BEFORE-PLUG",
+    "offer-version-masked": "ERR-OFFER-VERSION",
 }
 
 # Faults that must also be caught when the runner is given no --role at all.

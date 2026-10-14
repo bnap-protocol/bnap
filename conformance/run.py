@@ -1113,6 +1113,22 @@ def err_version(ctx):
     expect_error(ex, "VERSION")
 
 
+@case("ERR-OFFER-VERSION", "4.4", "MUST", "an inline offer of version 2 in a version 1 credential is VERSION, HTTP "
+      "400, before authenticity and before any plug", profiles=WITH_CREDENTIALS)
+def err_offer_version(ctx):
+    p, raw, o = probe_offer(ctx)
+    # Record 0 of the probe offer set to 2: its MAC and offer_sig no longer verify, and the value body is
+    # garbage, so a gate that checks authenticity first answers BAD_OFFER and one that calls a plug first
+    # answers BAD_CREDENTIAL. 4.4 step 2 checks the version before either.
+    v2 = codec.tlv([(r.type, codec.tu64(2) if r.type == 0 else r.value) for r in o.records])
+    ex = ctx.request(p.req, credential=scheme_cred(v2, o), label="offer version 2")
+    check(ex.code != "BAD_OFFER", "BAD_OFFER for a version 2 offer: the gate checked its authenticity before its "
+          "version (4.4 steps 2 and 3)")
+    check(ex.code != "BAD_CREDENTIAL", "BAD_CREDENTIAL for a version 2 offer: a scheme plug ran before the offer "
+          "version was checked (4.4)")
+    expect_error(ex, "VERSION")
+
+
 @case("ERR-OFFER-XOR", "5.1", "MUST", "both offer and offer_id, or neither, is MALFORMED", profiles=WITH_CREDENTIALS)
 def err_offer_xor(ctx):
     p, raw, o = probe_offer(ctx)
