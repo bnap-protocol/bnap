@@ -623,7 +623,15 @@ Both keysets have unit `sat` and one key for each amount m = 2^i, 0 ≤ i ≤ 15
 3ef6ce609745c194c160d1814295ad7e4d6d5a56178d68cf40b4a5dd4cfeb2d05e01020a0a
 ```
 
-`nuts/tools/notes_offer_vector.py` prints these values and every keyset key from the reference encoder. Before it prints anything it checks that the same records, without `params` and with the draft-00 `expires`, give the draft-00 OfferID, and that its keyset ID code reproduces a published version-01 ID.
+**The fee offer.** One negative vector of 18.2 item 9, fees above the inputs, cannot be built on the notes route offer. On keysets A and B each input adds at most 100 to the fee sum, so k inputs pay at most (100k + 999) div 1000 ≤ k sat, and every input is worth at least 1 sat, so the fee never exceeds I, let alone I + F. That vector uses the **fee offer** instead: the notes route offer with a third entry in `keysets`, keyset C, and every other record unchanged. Keyset C is built by the rule above with the label `C`, `input_fee_ppk` 2000 and `final_expiry` 1830000000, and is not active, so outputs stay on keyset A. Its entry sorts after those of A and B and adds 40 bytes, so the fee offer's `params` record is 146 bytes and the offer 453 bytes.
+
+| Vector | Value |
+| --- | --- |
+| Keyset C ID | `01fd899e9c7a7f4940273d43ec1dcd3bafc9fe4fe80ba292b9f021ab09b5aecf46` |
+| Fee offer OfferID | `b958c89e56ef83bb05dd98e88b0a4746f79ebac53c09c53f306e74635be1f2aa` |
+| Fee offer Context, as for the notes route offer | `a6f07b0ed275845d2d088e724cd9a7fc9cd7093df6e6456c613f40ca788bab11` |
+
+`nuts/tools/notes_offer_vector.py` prints these values, the bytes of both offers and every keyset key from the reference encoder. Before it prints anything it checks that the same records, without `params` and with the draft-00 `expires`, give the draft-00 OfferID, that the notes route offer has the OfferID above, and that its keyset ID code reproduces a published version-01 ID.
 
 ### 18.2 Required vectors
 
@@ -644,7 +652,7 @@ The vectors MUST include:
    Both signed sets contain index 0, so the vectors fix its encoding (7.3).
 7. **Minting:** `rk_mint` for a quote and two outputs (8.5).
 8. **A reused output:** a credential one of whose `B'` already has a signed-output record under another source. It verifies, and its settlement signs that `B'` again, with the same `C'` and DLEQ proof when keyset and amount match, and adds a second record (6.2, 7.4).
-9. **Negative vectors**, each with the expected `scheme_code`: inputs out of order; a repeated `K`; two outputs with one `B'`; an unknown odd record in the body; a record with an empty value; a short keyset ID; a non-power-of-two amount; an incomplete ladder; a ladder whose total is below the value; fees above the inputs; `input_sigs` of the wrong length; `fund` without `fund_sig`; a witness signature over another Digest; a note whose `C` does not verify; an output keyset that is not active.
+9. **Negative vectors**, each with the expected `scheme_code`: inputs out of order; a repeated `K`; two outputs with one `B'`; an unknown odd record in the body; a record with an empty value; a short keyset ID; a non-power-of-two amount; an incomplete ladder; a ladder whose total is below the value; fees above the inputs, under the fee offer of 18.1: one 1-sat input on keyset C and no outputs, so I = 1, F = 0 and fee = (2,000 + 999) div 1000 = 2 > I + F = 1 (`BAD_AMOUNT`, step 5 of 6.2); `input_sigs` of the wrong length; `fund` without `fund_sig`; a witness signature over another Digest; a note whose `C` does not verify; an output keyset that is not active. Every vector of this item but the fee vector uses the notes route offer.
 
 ## 19. Differences from the sources
 

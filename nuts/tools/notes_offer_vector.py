@@ -4,7 +4,8 @@
 The socket vectors' route offer (socket draft-00 section 14) has a bnap:notes
 pay entry without params, so no valid notes credential exists for it. This
 script builds the offer the notes vectors use instead, and whose OfferID the
-X-Cashu example of nuts/xx-http-402-self-issued-mint.md carries:
+X-Cashu example of nuts/xx-http-402-self-issued-mint.md carries, and the
+fee offer of section 18.2 item 9, which adds keyset C:
 
     python3 -I nuts/tools/notes_offer_vector.py reference/python
 
@@ -54,34 +55,50 @@ KEYSETS = [  # label, input_fee_ppk, final_expiry, active
     ("A", 100, 1830000000, True),
     ("B", 0, 1800000000, False),
 ]
+# Keyset C exists only for the "fees above the inputs" negative vector of notes
+# 18.2 item 9: on A and B the fee of k inputs is at most k, never above I + F.
+FEE_KEYSET = ("C", 2000, 1830000000, False)
 ISSUER = "https://api.example/cashu"
 EXPIRES = 1791703600
 SOCKET_OFFER_ID = "5c8640261f6f1de3206a2e9cd1c2599a2e9256547242061c95f9d2e06cf6696d"
+NOTES_OFFER_ID = "666b28f7f1d68d92e9c180f0d11fe743730d3932ab5bc566d68f53b17b0cbd95"  # notes 18.1
 
 
 def main():
     known = {a: bytes.fromhex(k) for a, k in NUT02_KEYS.items()}
     assert keyset_id_v01(known, "sat", 100, 2059210353).hex() == NUT02_ID, "NUT-02 ID disagrees"
 
-    keysets, entries = [], []
-    for label, fee, final_expiry, active in KEYSETS:
+    def keyset(label, fee, final_expiry, active):
         keys = {}
         for amt in AMOUNTS:
             a = int.from_bytes(sha(f"bnap notes test keyset {label} {amt}".encode()), "big")
             assert 0 < a < r.N
             keys[amt] = comp(r._mul(r.G, a))
         kid = keyset_id_v01(keys, "sat", fee, final_expiry)
-        keysets.append({"label": label, "input_fee_ppk": fee, "final_expiry": final_expiry,
-                        "active": active, "id": kid.hex(),
-                        "keys": {str(amt): keys[amt].hex() for amt in AMOUNTS}})
+        info = {"label": label, "input_fee_ppk": fee, "final_expiry": final_expiry,
+                "active": active, "id": kid.hex(),
+                "keys": {str(amt): keys[amt].hex() for amt in AMOUNTS}}
         rec = [(0, kid)]
         if fee:
             rec.append((2, r.tu64(fee)))
         if active:
             rec.append((4, b""))
-        entries.append((kid, r.tlv(rec)))
-    entries.sort()
-    params = r.tlv([(0, ISSUER.encode()), (2, r.entry_list([e for _, e in entries]))])
+        return info, (kid, r.tlv(rec))
+
+    def params_of(entries):
+        return r.tlv([(0, ISSUER.encode()), (2, r.entry_list([e for _, e in sorted(entries)]))])
+
+    keysets, entries = [], []
+    for ks in KEYSETS:
+        info, entry = keyset(*ks)
+        keysets.append(info)
+        entries.append(entry)
+    params = params_of(entries)
+
+    fee_info, fee_entry = keyset(*FEE_KEYSET)
+    fee_params = params_of(entries + [fee_entry])
+    # One 1-sat input on C: I = 1, F = 0, fee = (2000 + 999) div 1000 = 2 > I + F.
+    assert (FEE_KEYSET[1] + 999) // 1000 > 1, "keyset C cannot make the fee exceed one input"
 
     # The socket vectors' route offer, with params in the notes pay entry and a later expiry.
     offer_sk = r.H(b"bnap test offer key")
@@ -115,7 +132,15 @@ def main():
                             r.tagged("bnap/offer-sig", r.signed_bytes(r.parse_tlv(offer))),
                             recs[r.OFFER_SIG])
     assert r.offer_id_of(offer) == oid
+    assert oid.hex() == NOTES_OFFER_ID, "the notes route offer moved"
     ctx = r.context(oid, act, "bnap:notes", ["httpsig:web-bot-auth"], b"")
+
+    # The fee offer of notes 18.2 item 9: the notes route offer with keyset C added.
+    fee_pay = r.entry_list([
+        r.tlv([(0, b"bnap:notes"), (2, r.tu64(2100)), (4, b"sat"), (8, fee_params), (10, r.tu64(500))]),
+    ])
+    fee_offer, fee_oid = r.build_offer(fields(EXPIRES, fee_pay), offer_sk, mac_key)
+    assert r.offer_id_of(fee_offer) == fee_oid
 
     print(json.dumps({
         "issuer": ISSUER,
@@ -125,6 +150,11 @@ def main():
                   "offer_id": oid.hex(), "offer_sig": recs[r.OFFER_SIG].hex(),
                   "mac": recs[r.MAC].hex()},
         "context": ctx.hex(),
+        "fee_offer": {"keyset": fee_info,
+                      "params": {"bytes": fee_params.hex(), "len": len(fee_params)},
+                      "bytes": fee_offer.hex(), "len": len(fee_offer), "offer_id": fee_oid.hex(),
+                      "context": r.context(fee_oid, act, "bnap:notes",
+                                           ["httpsig:web-bot-auth"], b"").hex()},
     }, indent=1))
 
 
