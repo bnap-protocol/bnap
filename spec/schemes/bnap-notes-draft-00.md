@@ -105,6 +105,7 @@ Each signature is a BIP-340 signature over the 32-byte Digest of draft-00 5.2. `
 Draft-00 5.1 requires a scheme to reject a body that contains any byte it does not verify. The body and the witness MUST therefore be rejected with BAD\_CREDENTIAL and `bnap:notes/NON_CANONICAL` (section 13), not with socket MALFORMED (2.1), when any of these holds:
 
 - a framing error: a truncated record or entry, a non-minimal BigSize or tu64, types not strictly increasing, or bytes left over;
+- an input or output entry that lacks a record 3.2 or 3.3 marks Required, such as an input without `C`, or an entry that is the empty stream (the single byte `00` in the entry list, a zero length);
 - a record type not listed in 3.1 to 3.4, even or odd. The even/odd rule of draft-00 section 2 governs socket streams; inside a notes body or witness every unknown record is rejected, GREASE included (provisional reading: a client puts its GREASE in the socket streams, never in a scheme body);
 - a record of the wrong length, or with an empty value. No notes record is a flag, and every tu64 in a body is at least 1, so an empty value is never valid here;
 - a Point that is not a valid compressed point on secp256k1, or a `key` that is not a valid x-only key (its value is at least p, or no point has that x coordinate);
@@ -165,7 +166,7 @@ A `bnap:notes` pay entry (draft-00 4.1) has unit `sat`. Its `params` record (pay
 | 8 | max\_fund | tu64, in sat: the gate accepts funding requests (8.1) on this route up to this amount | When the route offers funding inside the 402 |
 | 10 | fund\_quote | Nested stream (5.3): a quote made for this client | Exact-scope offers only |
 
-The parameters are bytes inside a signed offer, so `offer_sig` and the MAC cover them (draft-00 4.2) and they follow the even/odd rule of draft-00 section 2: a client ignores an unknown odd record and treats the pay entry as unusable if it meets an unknown even one (provisional; draft-00 leaves the encoding of `params` to the scheme). A gate never builds a record outside this table.
+The parameters are bytes inside a signed offer, so `offer_sig` and the MAC cover them (draft-00 4.2) and they follow the even/odd rule of draft-00 section 2: a client ignores an unknown odd record and treats the pay entry as unusable if it meets an unknown even one (provisional; draft-00 leaves the encoding of `params` to the scheme). A client also treats the pay entry as unusable if `params`, a keyset entry or the `fund_quote` lacks a record this section marks Required. A gate never builds a record outside this table.
 
 ### 5.2 Keyset entries
 
@@ -652,7 +653,7 @@ The vectors MUST include:
    Both signed sets contain index 0, so the vectors fix its encoding (7.3).
 7. **Minting:** `rk_mint` for a quote and two outputs (8.5).
 8. **A reused output:** a credential one of whose `B'` already has a signed-output record under another source. It verifies, and its settlement signs that `B'` again, with the same `C'` and DLEQ proof when keyset and amount match, and adds a second record (6.2, 7.4).
-9. **Negative vectors**, each with the expected `scheme_code`: inputs out of order; a repeated `K`; two outputs with one `B'`; an unknown odd record in the body; a record with an empty value; a short keyset ID; a non-power-of-two amount; an incomplete ladder; a ladder whose total is below the value; fees above the inputs, under the fee offer of 18.1: one 1-sat input on keyset C and no outputs, so I = 1, F = 0 and fee = (2,000 + 999) div 1000 = 2 > I + F = 1 (`BAD_AMOUNT`, step 5 of 6.2); `input_sigs` of the wrong length; `fund` without `fund_sig`; a witness signature over another Digest; a note whose `C` does not verify; an output keyset that is not active. Every vector of this item but the fee vector uses the notes route offer.
+9. **Negative vectors**, each with the expected `scheme_code`: inputs out of order; a repeated `K`; two outputs with one `B'`; an unknown odd record in the body; a record with an empty value; an input entry without its `C` record and an output entry that is the empty stream `00`, each `NON_CANONICAL` (3.5); a short keyset ID; a non-power-of-two amount; an incomplete ladder; a ladder whose total is below the value; fees above the inputs, under the fee offer of 18.1: one 1-sat input on keyset C and no outputs, so I = 1, F = 0 and fee = (2,000 + 999) div 1000 = 2 > I + F = 1 (`BAD_AMOUNT`, step 5 of 6.2); `input_sigs` of the wrong length; `fund` without `fund_sig`; a witness signature over another Digest; a note whose `C` does not verify; an output keyset that is not active. Every vector of this item but the fee vector uses the notes route offer.
 
 ## 19. Differences from the sources
 

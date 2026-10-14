@@ -25,7 +25,7 @@ The document is normative for the `bnap-scheme-notes` crate, the wallet (`caparr
 | fund_quote | 0 quote ID, 2 BOLT11 request, 4 amount, 6 expiry, 8 33-byte NUT-20 pubkey | 5.3 |
 | scheme_result | Response record 16. TLV: 0 `signatures` (entry list: 0 index tu64, 2 C' point, 4 DLEQ e, 6 DLEQ s). Omitted when the change is 0. Required records are written even when empty, so the index of output 0 is the present empty record `00 00` (entry stream 105 bytes; 106 for indices 1 to 255); clients read an absent index as 0 (P32) | 7.3 |
 
-Bodies and witnesses are strict: any unknown record, even or odd, any empty record and any non-canonical encoding is BAD\_CREDENTIAL with `bnap:notes/NON_CANONICAL` (3.5). That includes a non-minimal BigSize or tu64 inside them, which draft-00 section 2 read literally would make socket MALFORMED; the socket streams around them keep MALFORMED (2.1, P33). Params follow the even/odd rule (5.1).
+Bodies and witnesses are strict: any unknown record, even or odd, any empty record, any input or output entry missing a Required record (an input without `C`, or the empty entry `00`; added in repair round 4) and any non-canonical encoding is BAD\_CREDENTIAL with `bnap:notes/NON_CANONICAL` (3.5). That includes a non-minimal BigSize or tu64 inside them, which draft-00 section 2 read literally would make socket MALFORMED; the socket streams around them keep MALFORMED (2.1, P33). Params follow the even/odd rule, and a client treats a pay entry whose `params`, keyset entry or `fund_quote` lacks a Required record as unusable (5.1).
 
 ### What `verify` returns (6.4)
 
