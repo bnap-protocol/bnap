@@ -1221,6 +1221,56 @@ def att_unknown_odd(ctx):
     check(r2.replayed, "dropping unknown odd records changed the ReplayKey")
 
 
+@case("ATT-EMPTY-FORMS", "2", "MUST", "an empty ext record means the same as no ext record",
+      profiles=WITH_CREDENTIALS)
+def att_empty_forms(ctx):
+    p, raw, o = admitted_dpop(ctx)
+    cred, _, _ = ctx.dpop_credential(p.req, raw, o)
+    item = cr.parse_credential(cred).attest
+    with_ext = cr.build_credential(offer=raw, attest=item, ext=b"")
+    r1 = expect_admitted(ctx.request(p.req, credential=with_ext, label="empty ext"))
+    check(not r1.replayed, "first send flagged replayed")
+    r2 = expect_admitted(ctx.request(p.req, credential=cred, label="no ext"))
+    check(r2.replayed, "absent and empty ext gave different Contexts or ReplayKeys")
+
+
+@case("ATT-BODY-ONLY", "5.1", "MUST", "an adapter reads what it verifies from the body, never from request fields",
+      profiles=WITH_CREDENTIALS)
+def att_body_only(ctx):
+    p, raw, o = admitted_dpop(ctx)
+    good, c, _ = ctx.dpop_credential(p.req, raw, o)
+    proof = codec.parse_stream(cr.parse_credential(good).attest[0].body)[1].value.decode()
+    weak, _, _ = ctx.dpop_credential(p.req, raw, o, omit_ctx=True)
+    ex = ctx.request(p.req, credential=weak, extra=[("DPoP", proof)], label="proof in the DPoP field only")
+    expect_not_admitted(ex)
+
+
+@case("ATT-CANONICAL-BODY", "5.1", "MUST", "a body with bytes the scheme does not verify is refused",
+      profiles=WITH_CREDENTIALS)
+def att_canonical_body(ctx):
+    p, raw, o = admitted_dpop(ctx)
+    good, _, _ = ctx.dpop_credential(p.req, raw, o)
+    body = cr.parse_credential(good).attest[0].body + codec.tlv([(4, b"x")])
+    bad = cr.build_credential(offer=raw, attest=[cr.SchemeItem(DPOP, body, None)])
+    expect_not_admitted(ctx.request(p.req, credential=bad, label="extra record in the body"))
+
+
+@case("SCOPE-BODY-HASH", "10.1", "MUST", "the gate hashes the content itself and ignores Content-Digest",
+      profiles=WITH_CREDENTIALS)
+def scope_body_hash(ctx):
+    hit = ctx.find(lambda o: dpop_waive(o) and o.route_scope) or ctx.find(dpop_waive)
+    if hit is None:
+        raise Skip("no offer with a DPoP waive")
+    p, raw, o = hit
+    if p.req.body is None:
+        raise Skip("the route takes no content")
+    req = ctx.make_req(p.route, leaf="digest-" + b64u(os.urandom(4))) if o.route_scope else p.req
+    cred, _, _ = ctx.dpop_credential(req, raw, o)
+    ex = ctx.request(req, credential=cred, extra=[("Content-Digest", "sha-256=:" + b64u(bytes(32)) + "=:")],
+                     label="wrong Content-Digest")
+    expect_admitted(ex)
+
+
 @case("ATT-CONTEXT-BOUND", "5.1", "MUST", "an attestation whose proof does not carry the Context does not count",
       profiles=WITH_CREDENTIALS)
 def att_context_bound(ctx):
