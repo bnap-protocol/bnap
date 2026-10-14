@@ -5,7 +5,7 @@ Usage:
   python3 -I conformance/run.py --target https://host --profile gateway|server|client
       [--payer none|cmd:<shell command>] [--report DIR]
       [--role NAME=ROUTE_ID]... [--dpop-token-cmd CMD] [--max-wait S]
-      [--max-spend-sat N] [--allow-http] [--insecure] [--only ID,...] [--allow-skips] [--list]
+      [--max-spend-sat N] [--fee-limit-sat N] [--allow-http] [--insecure] [--only ID,...] [--allow-skips] [--list]
 
 Profiles:
   client   read-only: the manifest and the 402 offers, everything a client
@@ -20,11 +20,17 @@ Profiles:
 adds value flows: the command is run through the shell with the BOLT 11
 invoice appended as its last argument (and in BNAP_INVOICE); it must pay
 it and print the 32-byte preimage in hex. The runner decodes the invoice
-strictly, pays only the exact amount of the offer's pay entry, and refuses
-any invoice above --max-spend-sat per action or in total. It also sets
-BNAP_EXPECT_AMOUNT_SAT and BNAP_EXPECT_PAYMENT_HASH (hex): a payer wrapper
-MUST decode the invoice itself and refuse to pay when its amount or payment
-hash differs, so that the cap holds even where the two decoders disagree.
+strictly, pays only the exact amount of the offer's pay entry, refuses AMP
+invoices, and refuses any invoice whose amount plus the routing fee limit
+(--fee-limit-sat, default 10, reserved per payment) is over what
+--max-spend-sat leaves. It also sets BNAP_EXPECT_AMOUNT_SAT and
+BNAP_EXPECT_PAYMENT_HASH (hex): a payer wrapper MUST decode the invoice
+itself and refuse to pay when its amount or payment hash differs, so that
+the cap holds even where the two decoders disagree. It sets
+BNAP_REMAINING_SAT and BNAP_FEE_LIMIT_SAT: the wrapper MUST cap its routing
+fee at the limit and refuse unless amount + limit <= remaining. A payer may
+print a line fee_msat=<N> before the preimage; the runner then counts the
+amount plus that fee (rounded up to a sat), and otherwise the whole limit.
 conformance/payers/lncli-payer.sh is such a wrapper for lnd.
 
 Roles name manifest routes with a special application behaviour:
@@ -55,6 +61,7 @@ import ipaddress
 import json
 import os
 import pathlib
+import re
 import shlex
 import subprocess
 import sys
@@ -539,18 +546,35 @@ class Ctx:
         check(amt is not None and amt == entry.amount,
               f"the invoice asks {inv.amount_msat} msat, the offer's {entry.scheme} entry {entry.amount} sat: "
               "the runner pays only the exact amount the offer names")
+        if inv.amp:
+            raise Skip("the invoice sets AMP (feature bit 30 or 31): one invoice could take many payments, "
+                       "so the runner does not pay it")
+        fee = self.args.fee_limit_sat
+        cap = self.args.max_spend_sat
         with self.lock:
-            if amt > self.args.max_spend_sat or self.spent_sat + amt > self.args.max_spend_sat:
-                raise Skip(f"invoice of {amt} sat is over --max-spend-sat {self.args.max_spend_sat} "
-                           f"(spent {self.spent_sat})")
-            self.spent_sat += amt
+            # The routing fee is paid on top of the invoice: reserve the whole fee limit now, and
+            # count what the payer reports it paid once it is done.
+            remaining = cap - self.spent_sat
+            if amt + fee > remaining:
+                raise Skip(f"invoice of {amt} sat plus a routing fee limit of {fee} sat is over what "
+                           f"--max-spend-sat {cap} leaves ({remaining} sat)")
+            self.spent_sat += amt + fee
         cmd = spec[4:] + " " + shlex.quote(invoice)
         env = dict(os.environ, BNAP_INVOICE=invoice, BNAP_EXPECT_AMOUNT_SAT=str(amt),
-                   BNAP_EXPECT_PAYMENT_HASH=inv.payment_hash.hex())
+                   BNAP_EXPECT_PAYMENT_HASH=inv.payment_hash.hex(), BNAP_REMAINING_SAT=str(remaining),
+                   BNAP_FEE_LIMIT_SAT=str(fee))
         out = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=180, env=env)
         if out.returncode != 0:
+            # The reservation stays counted: the payer may have paid before it failed.
             raise Fail("payer failed: " + (out.stderr.strip() or out.stdout.strip())[:160])
         lines = [x.strip() for x in out.stdout.splitlines() if x.strip()]
+        fees = [m.group(1) for x in lines for m in [re.fullmatch(r"fee_msat=([0-9]{1,18})", x)] if m]
+        if fees:
+            paid_fee = -(-int(fees[-1]) // 1000)  # whole sat, rounded up
+            with self.lock:
+                self.spent_sat += paid_fee - fee
+            check(paid_fee <= fee, f"the payer paid a routing fee of {fees[-1]} msat, over the "
+                  f"{fee} sat limit it was given")
         try:
             pre = bytes.fromhex(lines[-1])
         except (ValueError, IndexError):
@@ -2238,7 +2262,10 @@ def parse_args(argv):
                                                                  "cache)")
     ap.add_argument("--dpop-token-cmd", help="prints an access token for the thumbprint given as last argument")
     ap.add_argument("--max-wait", type=int, default=120, help="longest wait a case may take, in seconds")
-    ap.add_argument("--max-spend-sat", type=int, default=100, help="total the payer may spend")
+    ap.add_argument("--max-spend-sat", type=int, default=100,
+                    help="total the payer may spend, routing fees included")
+    ap.add_argument("--fee-limit-sat", type=int, default=10,
+                    help="routing fee limit per payment, reserved against --max-spend-sat (default 10)")
     ap.add_argument("--allow-http", action="store_true", help="allow a plain-HTTP target (test gates only)")
     ap.add_argument("--insecure", action="store_true", help="do not verify the TLS certificate (test gates only)")
     ap.add_argument("--only", help="comma-separated case IDs; a run that leaves out MUST cases of the profile "
@@ -2263,6 +2290,8 @@ def parse_args(argv):
             ap.error("--role takes NAME=ROUTE_ID")
     if a.payer != "none" and not a.payer.startswith("cmd:"):
         ap.error("--payer is none or cmd:<command>")
+    if a.fee_limit_sat < 0 or a.max_spend_sat < 0:
+        ap.error("--fee-limit-sat and --max-spend-sat are not negative")
     return a
 
 

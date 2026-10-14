@@ -134,6 +134,12 @@ def entry(amount, unit="sat"):
     return types.SimpleNamespace(scheme="httpauth:L402", amount=amount, unit=unit)
 
 
+def amp_invoice(hrp="lnbcrt210n"):
+    """A crafted invoice whose feature field sets bit 30 (AMP: many payments to one invoice)."""
+    return craft(hrp, ln.bolt11_field("p", words(PH)) + ln.bolt11_field("h", words(bytes(32)))
+                 + ln.bolt11_field("9", [1, 0, 0, 0, 0, 0, 0]))
+
+
 class PayTest(unittest.TestCase):
     """run.py pay(): what reaches the payer command, and what never does."""
 
@@ -141,10 +147,16 @@ class PayTest(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.marker = pathlib.Path(self.tmp.name) / "paid"
         self.envfile = pathlib.Path(self.tmp.name) / "env"
-        cmd = ("touch %s; printf '%%s %%s' \"$BNAP_EXPECT_AMOUNT_SAT\" \"$BNAP_EXPECT_PAYMENT_HASH\" > %s; echo %s; :"
-               % (shlex.quote(str(self.marker)), shlex.quote(str(self.envfile)), PRE.hex()))
+        self.use(fee_line="fee_msat=0")
+
+    def use(self, fee_line=None, extra=()):
+        """A payer that records what it got, prints fee_line (if any) and the preimage."""
+        fee = "echo %s; " % shlex.quote(fee_line) if fee_line else ""
+        cmd = ("touch %s; printf '%%s %%s %%s %%s' \"$BNAP_EXPECT_AMOUNT_SAT\" \"$BNAP_EXPECT_PAYMENT_HASH\" "
+               "\"$BNAP_REMAINING_SAT\" \"$BNAP_FEE_LIMIT_SAT\" > %s; %secho %s; :"
+               % (shlex.quote(str(self.marker)), shlex.quote(str(self.envfile)), fee, PRE.hex()))
         self.ctx = run.Ctx(run.parse_args(["--target", "http://127.0.0.1:9", "--allow-http", "--payer", "cmd:" + cmd,
-                                           "--max-spend-sat", "100"]))
+                                           "--max-spend-sat", "100", *extra]))
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -158,8 +170,38 @@ class PayTest(unittest.TestCase):
     def test_exact_amount_is_paid_with_expectations(self):
         self.assertEqual(self.ctx.pay(craft("lnbcrt210n"), entry(21)), PRE)
         self.assertTrue(self.marker.exists())
-        self.assertEqual(self.envfile.read_text(), f"21 {PH.hex()}")
+        # The payer learns what is left of the cap and the fee limit reserved for this payment.
+        self.assertEqual(self.envfile.read_text(), f"21 {PH.hex()} 100 10")
         self.assertEqual(self.ctx.spent_sat, 21)
+        self.ctx.pay(craft("lnbcrt210n"), entry(21))
+        self.assertEqual(self.envfile.read_text(), f"21 {PH.hex()} 79 10")
+
+    def test_the_fee_limit_counts_against_the_cap(self):
+        # 95 sat fits under 100, but not with the 10 sat routing fee lnd may add on top.
+        self.refused(craft("lnbcrt950n"), entry(95), run.Skip)
+        self.use(fee_line="fee_msat=0", extra=["--fee-limit-sat", "5"])
+        self.assertEqual(self.ctx.pay(craft("lnbcrt950n"), entry(95)), PRE)
+        self.assertEqual(self.envfile.read_text(), f"95 {PH.hex()} 100 5")
+        self.assertEqual(self.ctx.spent_sat, 95)
+
+    def test_the_fee_paid_is_added_to_the_spent_total(self):
+        self.use(fee_line="fee_msat=2500")
+        self.ctx.pay(craft("lnbcrt210n"), entry(21))
+        self.assertEqual(self.ctx.spent_sat, 24, "21 sat and a 2.5 sat fee, rounded up")
+
+    def test_an_unreported_fee_counts_the_whole_limit(self):
+        self.use(fee_line=None)
+        self.ctx.pay(craft("lnbcrt210n"), entry(21))
+        self.assertEqual(self.ctx.spent_sat, 31)
+
+    def test_a_fee_over_the_limit_fails_and_is_counted(self):
+        self.use(fee_line="fee_msat=11000")
+        with self.assertRaises(run.Fail):
+            self.ctx.pay(craft("lnbcrt210n"), entry(21))
+        self.assertEqual(self.ctx.spent_sat, 32)
+
+    def test_an_amp_invoice_is_never_paid(self):
+        self.refused(amp_invoice(), entry(21), run.Skip)
 
     def test_refusals(self):
         cases = [
@@ -208,21 +250,37 @@ class LncliPayerTest(unittest.TestCase):
         e.update(env)
         return subprocess.run(["sh", str(PAYER), inv], capture_output=True, text=True, env=e, timeout=60)
 
+    def expect(self, inv, remaining=100, fee=10):
+        d = ln.decode_bolt11(inv)
+        return dict(BNAP_INVOICE=inv, BNAP_EXPECT_AMOUNT_SAT=str(d.amount_sat),
+                    BNAP_EXPECT_PAYMENT_HASH=d.payment_hash.hex(), BNAP_REMAINING_SAT=str(remaining),
+                    BNAP_FEE_LIMIT_SAT=str(fee))
+
     def test_pays_what_run_py_expects(self):
         inv = self.invoice()
         d = ln.decode_bolt11(inv)
-        out = self.payer(inv, BNAP_INVOICE=inv, BNAP_EXPECT_AMOUNT_SAT=str(d.amount_sat),
-                         BNAP_EXPECT_PAYMENT_HASH=d.payment_hash.hex())
+        out = self.payer(inv, FAKE_LNCLI_FEE_MSAT="1234", **self.expect(inv, fee=7))
         self.assertEqual(out.returncode, 0, out.stderr)
-        self.assertEqual(hashlib.sha256(bytes.fromhex(out.stdout.strip())).digest(), d.payment_hash)
-        self.assertIn("payinvoice", self.log.read_text())
+        lines = out.stdout.split()
+        self.assertEqual(hashlib.sha256(bytes.fromhex(lines[-1])).digest(), d.payment_hash)
+        self.assertIn("fee_msat=1234", lines, "the fee lnd paid is reported to run.py")
+        pay = next(x for x in self.log.read_text().splitlines() if x.startswith("payinvoice"))
+        self.assertIn("--fee_limit 7", pay, "the fee limit is the one run.py reserved")
+        self.assertIn("--max_parts 1", pay, "one payment, one part")
 
     def test_refuses_any_mismatch(self):
         inv = self.invoice()
         d = ln.decode_bolt11(inv)
-        ok = dict(BNAP_INVOICE=inv, BNAP_EXPECT_AMOUNT_SAT=str(d.amount_sat),
-                  BNAP_EXPECT_PAYMENT_HASH=d.payment_hash.hex())
+        ok = self.expect(inv)
+        amp = amp_invoice()
+        no_fee = {k: v for k, v in ok.items() if k != "BNAP_FEE_LIMIT_SAT"}
+        no_rest = {k: v for k, v in ok.items() if k != "BNAP_REMAINING_SAT"}
         cases = {
+            "amount plus fee limit over what is left": dict(ok, BNAP_REMAINING_SAT=str(d.amount_sat + 9)),
+            "no fee limit set": no_fee,
+            "no remaining budget set": no_rest,
+            "a fee limit that is not a decimal": dict(ok, BNAP_FEE_LIMIT_SAT="10; true"),
+            "lnd reads an AMP feature": dict(ok, FAKE_LNCLI_FEATURES='{"30": {"name": "amp"}}'),
             "run.py expects another amount": dict(ok, BNAP_EXPECT_AMOUNT_SAT=str(d.amount_sat - 1)),
             "run.py expects another payment hash": dict(ok, BNAP_EXPECT_PAYMENT_HASH="00" * 32),
             "lnd reads another amount": dict(ok, FAKE_LNCLI_MSAT=str(d.amount_msat * 1000)),
@@ -232,16 +290,22 @@ class LncliPayerTest(unittest.TestCase):
             "BNAP_INVOICE differs from the argument": dict(ok, BNAP_INVOICE=craft("lnbcrt210n")),
         }
         for why, env in cases.items():
-            with self.subTest(why=why):
-                self.log.write_text("")
-                base = {k: v for k, v in os.environ.items() if not k.startswith(("BNAP_", "FAKE_LNCLI_M",
-                                                                                  "FAKE_LNCLI_H"))}
-                e = dict(base, **self.env)
-                e.update(env)
-                out = subprocess.run(["sh", str(PAYER), inv], capture_output=True, text=True, env=e, timeout=60)
-                self.assertNotEqual(out.returncode, 0, out.stdout)
-                self.assertNotIn("payinvoice", self.log.read_text(), "paid despite the mismatch")
-                self.assertEqual(out.stdout.strip(), "")
+            self.check_refused(inv, why, env)
+        # A crafted AMP invoice, read by lnd (the fake decodes its feature field).
+        self.check_refused(amp, "a crafted AMP invoice", self.expect(amp))
+
+    def check_refused(self, inv, why, env):
+        """The wrapper refuses inv under env and never calls payinvoice."""
+        with self.subTest(why=why):
+            self.log.write_text("")
+            base = {k: v for k, v in os.environ.items() if not k.startswith(("BNAP_", "FAKE_LNCLI_M",
+                                                                              "FAKE_LNCLI_H", "FAKE_LNCLI_F"))}
+            e = dict(base, **self.env)
+            e.update(env)
+            out = subprocess.run(["sh", str(PAYER), inv], capture_output=True, text=True, env=e, timeout=60)
+            self.assertNotEqual(out.returncode, 0, out.stdout)
+            self.assertNotIn("payinvoice", self.log.read_text(), "paid despite the mismatch")
+            self.assertEqual(out.stdout.strip(), "")
 
     def test_run_py_pays_through_the_wrapper(self):
         cmd = "cmd:sh " + shlex.quote(str(PAYER))

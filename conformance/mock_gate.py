@@ -896,6 +896,7 @@ def main(argv=None):
         if r.status != 200:
             sys.stderr.write(f"pay failed: {r.status} {r.body[:80]!r}\n")
             return 1
+        print("fee_msat=0")  # the fake network routes for free
         print(r.body.decode())
         return 0
     ok, rows, _ = selftest(a.report, a.with_payer, a.max_wait)

@@ -105,6 +105,16 @@ class Invoice:
         return self.tags.get("h")
 
     @property
+    def features(self):
+        """The feature bits of the 9 field, as an integer (bit i is 1 << i); 0 without one."""
+        return self.tags.get("9", 0)
+
+    @property
+    def amp(self):
+        """True when the invoice sets AMP (feature bits 30 or 31): one invoice, many payments."""
+        return bool(self.features >> 30 & 3)
+
+    @property
     def amount_sat(self):
         """The amount in whole satoshis, or None when the invoice has no amount or a fraction of one."""
         if self.amount_msat is None or self.amount_msat % 1000:
@@ -117,7 +127,7 @@ NETWORKS = {"bc": "bitcoin", "tb": "testnet", "tbs": "signet", "bcrt": "regtest"
 MAX_MSAT = 21_000_000 * 10 ** 11  # every bitcoin there will be, in millisatoshi
 _HRP = re.compile(r"ln(bcrt|bc|tbs|tb|sb)(?:([1-9][0-9]*)([munp]?))?", re.ASCII)
 _MULT = {"": 10 ** 11, "m": 10 ** 8, "u": 10 ** 5, "n": 10 ** 2}  # msat per unit; "p" is a tenth of one
-_TAGS = {1: "p", 23: "h", 13: "d", 6: "x", 16: "s", 19: "n", 24: "c"}
+_TAGS = {1: "p", 23: "h", 13: "d", 6: "x", 16: "s", 19: "n", 24: "c", 5: "9"}
 _TAG_CODES = {v: k for k, v in _TAGS.items()}
 _FIXED_WORDS = {"p": 52, "h": 52, "s": 52, "n": 53}
 DEFAULT_NODE_KEY = key_from_label("bnap conformance lightning node key")
@@ -158,7 +168,7 @@ def decode_bolt11(s):
       total may not exceed 21 million bitcoin;
     - tagged fields fill the data part exactly up to the 65-byte signature, with no partial field
       and no trailing words;
-    - exactly one p field, at most one each of h, d, s, n, x and c; p, h and s have 52 words and n
+    - exactly one p field, at most one each of h, d, s, n, x, c and 9 (features, kept as an integer); p, h and s have 52 words and n
       53, with zero padding bits; exactly one of d (valid UTF-8) and h; unknown fields are skipped;
     - the signature has r and s in range and a recovery id 0 to 3, recovers a public key, and that
       key is the n field when there is one.
@@ -194,7 +204,7 @@ def decode_bolt11(s):
             if ln_ != _FIXED_WORDS[name]:
                 raise ValueError(f"{name} field of {ln_} words, not {_FIXED_WORDS[name]}")
             tags[name] = bytes(convertbits(words, 5, 8, pad=False))
-        elif name in ("x", "c"):
+        elif name in ("x", "c", "9"):
             tags[name] = _int_of(words)
         else:
             try:
