@@ -109,6 +109,10 @@ class PayerAndProfiles(unittest.TestCase):
         for cid in ("PAY-L402", "PAY-OFFER-BINDING", "PAY-TWO-SCHEMES", "PAY-MPP", "PAY-NATIVE"):
             self.assertEqual(st[cid].status, "pass", f"{cid}: {st[cid].detail}")
         self.assertEqual(st["NOTES-VALUE"].status, "skip")
+        # The notes draft-00 text is on develop: the skip names the missing wallet, not a missing spec.
+        self.assertTrue(run.notes.available())
+        self.assertEqual(st["NOTES-VALUE"].detail, run.notes.SKIP_REASON)
+        self.assertIn("not built yet", st["NOTES-VALUE"].detail)
         self.assertLessEqual(rr.ctx.spent_sat, 200)
         self.assertEqual(rr.must_failures(), [])
 

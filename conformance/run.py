@@ -1899,16 +1899,14 @@ def pay_metered(ctx):
     p, raw, o = hit
     payable = [e for e in o.pay if e.scheme in ("httpauth:L402", "payment:lightning/charge")]
     if not payable:
-        raise Skip("metered offers list only schemes the runner cannot pay: " + notes.SKIP_REASON)
+        raise Skip("metered offers list only schemes the runner cannot pay: " + notes.skip_reason())
     raise Skip("metered entries for L402 or MPP break the 7 refund rule; nothing to pay")
 
 
 @case("NOTES-VALUE", "5.1", "MUST", "bnap:notes value flows: change outputs, metered refunds, witnesses",
       profiles=WITH_CREDENTIALS, needs=("payer",))
 def notes_value(ctx):
-    if not notes.available():
-        raise Skip(notes.SKIP_REASON)
-    raise Skip("bnap-notes-draft-00.md is present but no wallet is built yet")
+    raise Skip(notes.skip_reason())
 
 # ================================================================ checks over every exchange
 

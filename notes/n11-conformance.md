@@ -1,6 +1,6 @@
 # Integration notes: node N11, the conformance suite
 
-Branch `node/n11` of the spec repository, based on `develop` at `4abe3d5`. This node owns `conformance/` and `vectors/cases/`; nothing else in the tree changed. It was built from `spec/socket-draft-00.md`, `spec/ERRATA.md`, `spec/DECISIONS.md`, `registry/generated/registry.json` and `reference/python/bnap_ref.py` only. No code of the implementation under test was read.
+Branch `node/n11` of the spec repository, based on `develop` at `4abe3d5`, with `develop` at `e90fd8c` merged in (repair round 3). This node owns `conformance/` and `vectors/cases/`; nothing else in the tree changed. It was built from `spec/socket-draft-00.md`, `spec/ERRATA.md`, `spec/DECISIONS.md`, `registry/generated/registry.json` and `reference/python/bnap_ref.py` only. No code of the implementation under test was read.
 
 ## What was built
 
@@ -111,9 +111,9 @@ The clean run in the unit tests uses the full `--max-wait`, so `ATT-STALE` and `
 | | Sentences |
 | --- | --- |
 | Covered | 29 |
-| Partial (what is not reached is said in the row) | 9: R-4.4-02, R-4.4-03, R-5.1-05, R-5.3-01, R-5.3-02, R-6.3-01, R-9.2-02, R-12-03, R-12-04 |
+| Partial (what is not reached is said in the row) | 10: R-4.4-02, R-4.4-03, R-5.1-05, R-5.3-01, R-5.3-02, R-6.1-03, R-6.3-01, R-9.2-02, R-12-03, R-12-04 |
 | Client duty, checked through vectors | 3: R-7-02, R-10.1-02, R-10.2-03 |
-| Untestable black-box, with the reason | 7: R-2-01, R-6.1-03, R-6.4-01, R-6.4-02, R-8.2-01, R-9.2-03, R-12-02 |
+| Untestable black-box, with the reason | 6: R-2-01, R-6.4-01, R-6.4-02, R-8.2-01, R-9.2-03, R-12-02 |
 | Reached by a vector group | 33 |
 | Reached by a runner case | 41 |
 | Reached by neither | 2 (R-2-01 signer randomness, R-12-02 synchronous durability) |
@@ -148,7 +148,7 @@ These fill gaps in the spec. If the implementation under test chose differently,
 
 ## Gaps
 
-- **bnap:notes value flows** are stubbed: `spec/schemes/bnap-notes-draft-00.md` is not on develop (it exists only on `node/n13`), so `NOTES-VALUE` and the metered charge flow (`PAY-METERED`) skip with that reason. When the file lands, `bnap_conf/notes.py` is where the wallet goes.
+- **bnap:notes value flows** are stubbed: `spec/schemes/bnap-notes-draft-00.md` has landed on develop (N13 merge `40c12d3`, merged into `node/n11`), but the suite's notes wallet client is not built yet, so `NOTES-VALUE`, the metered charge flow (`PAY-METERED`) and the draft-00 6.1 RailId commit at mint skip with that reason (COVERAGE rows R-6.1-03, A-7m and D-31 are partial). `bnap_conf/notes.py` is where the wallet goes.
 - **TLS binding, positive path.** Python's `ssl` module exposes no `tls-exporter` value, so the runner only sends bindings that cannot match. A correct binding is never presented.
 - **Trailers.** `http.client` drops HTTP trailers, so receipts sent as a `BNAP-Receipt` trailer are not read; event streams are.
 - **Other attestations** (Web Bot Auth, Privacy Pass, NIP-98, World ID) are not exercised: the runner can make only DPoP keys.

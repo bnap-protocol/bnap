@@ -19,7 +19,7 @@ Modules:
   client      client choice rules, bnap-required, native challenges (4.4, 9.3)
   dpop        the httpauth:DPoP adapter profile used by the suite
   lightning   BOLT 11, L402 macaroons, the MPP profile used by the suite
-  notes       bnap:notes stub (the draft-00 notes spec is not on develop)
+  notes       bnap:notes stub (the draft-00 notes spec has landed; the wallet is not built yet)
   registry    the scheme registry export
 """
 from . import codec, crypto, offer, credential, response, manifest, http, pricing, store  # noqa: F401
