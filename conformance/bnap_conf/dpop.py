@@ -88,7 +88,7 @@ class DpopReject(Exception):
     pass
 
 
-def verify_body(body, *, context, method, htu, now, skew=60, accept_token=None):
+def verify_body(body, *, context, method, htu, now, skew=60, accept_token=None, check_context=True):
     """Verify a profile body. accept_token(token, thumbprint) -> bool decides tokens.
 
     Raises MALFORMED for a non-canonical body (5.1 canonical bodies) and
@@ -119,10 +119,11 @@ def verify_body(body, *, context, method, htu, now, skew=60, accept_token=None):
         raise DpopReject("proof-jwk") from None
     if not es256_verify(x, y, (parts[0] + "." + parts[1]).encode(), sig):
         raise DpopReject("proof-signature")
-    if claims.get(CLAIM) is None:
-        raise DpopReject("context-claim-missing")
-    if claims.get(CLAIM) != b64u(context):
-        raise DpopReject("context-claim-mismatch")
+    if check_context:
+        if claims.get(CLAIM) is None:
+            raise DpopReject("context-claim-missing")
+        if claims.get(CLAIM) != b64u(context):
+            raise DpopReject("context-claim-mismatch")
     if claims.get("htm") != method or claims.get("htu") != htu:
         raise DpopReject("htm-htu")
     iat = claims.get("iat")
