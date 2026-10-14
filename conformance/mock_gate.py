@@ -31,6 +31,7 @@ Faults:
   late-expiry           the scheme plugs run before the expiry check, and STALE
                         is raised only afterwards (4.4 order broken)
   nonce-reuse           one fixed nonce per route, with a new invoice on every 402
+  no-receipt-on-failed  responses to FAILED outcomes carry no BNAP-Receipt
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -60,7 +61,7 @@ from bnap_conf.crypto import schnorr_pub, key_from_label  # noqa: E402
 
 FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "bad-ack", "no-dpop",
           "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window", "late-expiry",
-          "nonce-reuse")
+          "nonce-reuse", "no-receipt-on-failed")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -531,7 +532,7 @@ class MockGate:
             resp = self._response(o, dg, status, out.charged, unit, out.extra.get("units"), out.scheme_result,
                                   out.settled_at, replayed=True)
             app_status, app_headers, app_body = out.response or (200, [], b"")
-            return Reply(app_status, app_headers + [("BNAP-Receipt", b64u(resp))], app_body)
+            return Reply(app_status, app_headers + self._receipt_header(resp, status), app_body)
         app_status, app_headers, app_body, units = self._app(route, target, headers, body)
         status = st.OK if app_status < 500 else st.FAILED
         if o.metered and units is not None and status == st.OK:
@@ -550,7 +551,12 @@ class MockGate:
             text = "".join(("event: %s\n" % n if n != "message" else "") + "data: %s\n\n" % d for n, d in events)
             text += "event: bnap-receipt\ndata: %s\n\n" % b64u(resp)
             app_body = text.encode()
-        return Reply(app_status, app_headers + [("BNAP-Receipt", b64u(resp))], app_body)
+        return Reply(app_status, app_headers + self._receipt_header(resp, status), app_body)
+
+    def _receipt_header(self, resp, status):
+        if status == st.FAILED and "no-receipt-on-failed" in self.faults:
+            return []
+        return [("BNAP-Receipt", b64u(resp))]
 
     def _response(self, o, dg, status, charged, unit, units, scheme_result, settled_at, replayed=False):
         raw = rs.build_response(status=0 if status == st.OK else 1, charged=charged or 0, unit=unit,
@@ -650,7 +656,13 @@ FAULT_CASES = {
     "reusable-window": "USE-REUSABLE-WINDOW",
     "late-expiry": "ERR-EXPIRY-BEFORE-PLUG",
     "nonce-reuse": "OFR-NONCE-ONE-MINT",
+    "no-receipt-on-failed": "RCPT-EVERY-COMMIT",
 }
+
+# Faults that must also be caught when the runner is given no --role at all.
+NO_ROLE_FAULTS = ("no-receipt-on-failed",)
+# Faults only an expired offer shows: their runs keep the default --max-wait.
+WAIT_FAULTS = ("late-expiry",)
 
 # Fault sets under which no admission is reachable without a payer: the runner
 # must not call the gate conformant. Expected verdict "incomplete", exit 3, and
@@ -667,6 +679,7 @@ def _plans():
     """(name, faults, expectation, runner keyword arguments) for every selftest run."""
     out = [("clean", (), None, {})]
     out += [(f, (f,), FAULT_CASES[f], {}) for f in FAULT_CASES]
+    out += [(f + "/no-roles", (f,), FAULT_CASES[f], {"roles": False}) for f in NO_ROLE_FAULTS]
     out += [(name, faults, (INCOMPLETE, must), {}) for name, (faults, must) in INCOMPLETE_PLANS.items()]
     return out
 
@@ -681,7 +694,8 @@ def selftest(report=None, with_payer=False, max_wait=None):
         g = MockGate(faults=faults).start()
         try:
             rep = pathlib.Path(report) / name if report else None
-            extra = ["--max-wait", str(max_wait)] if max_wait is not None else []
+            wait = max_wait if not set(faults) & set(WAIT_FAULTS) else None
+            extra = ["--max-wait", str(wait)] if wait is not None else []
             args = runner_args(g, rep, with_payer and name == "clean", extra, **kw)
             results[name] = runner.run(args, quiet=True)
         finally:

@@ -69,8 +69,16 @@ class MutationSelfCheck(unittest.TestCase):
     def test_each_fault_is_caught_by_its_case(self):
         for fault, case_id in mock_gate.FAULT_CASES.items():
             with self.subTest(fault=fault):
-                r = [x for x in self.results[fault].results if x.case.id == case_id][0]
+                rr = self.results[fault]
+                r = [x for x in rr.results if x.case.id == case_id][0]
                 self.assertEqual(r.status, "fail", f"{case_id} under {fault}: {r.status} {r.detail}")
+                self.assertEqual(rr.exit_status(), run.EXIT_FAIL)
+                self.assertEqual(rr.verdict(), "not conformant")
+        for fault in mock_gate.NO_ROLE_FAULTS:
+            with self.subTest(fault=fault, roles=False):
+                case_id = mock_gate.FAULT_CASES[fault]
+                r = [x for x in self.results[fault + "/no-roles"].results if x.case.id == case_id][0]
+                self.assertEqual(r.status, "fail", f"{case_id} under {fault} without roles: {r.status} {r.detail}")
         self.assertTrue(self.ok, self.rows)
 
     def test_reports(self):

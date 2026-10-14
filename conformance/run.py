@@ -76,6 +76,7 @@ SECTION_TITLES = {
 }
 DPOP = dpop.SCHEME
 POST_BODY = b'{"conformance":true}'
+NATIVE_AUTH = ("l402", "lsat", "payment")
 
 # ---------------------------------------------------------------- case registry
 
@@ -198,6 +199,20 @@ class Exchange:
     @property
     def carried_credential(self):
         return any(k.lower() == "bnap-credential" for k, _ in self.sent_headers)
+
+    @property
+    def carried_native(self):
+        """A native value credential in Authorization (L402, LSAT, MPP Payment)."""
+        return any(k.lower() == "authorization" and v.strip().split(" ", 1)[0].lower() in NATIVE_AUTH
+                   for k, v in self.sent_headers)
+
+    def has_receipt(self):
+        """BNAP-Receipt in the header, or the final bnap-receipt event of an event stream (10.2)."""
+        if self.receipt_raw:
+            return True
+        if self.res is None or not (self.res.header("Content-Type") or "").lower().startswith("text/event-stream"):
+            return False
+        return any(n == "bnap-receipt" for n, _ in hp.parse_sse(self.res.body or b""))
 
     def sent_credential(self):
         """The Credential this exchange sent, parsed, or None."""
@@ -1743,6 +1758,37 @@ def notes_value(ctx):
 # ================================================================ checks over every exchange
 
 
+def _commit_sweep(ctx):
+    """One admissible DPoP-only credential on every route that offers a DPoP waive, roles or
+    not, so that each route's commit path (a failing application's included) is seen once."""
+    win = ctx.limits()["replay_window"]
+    for r in ctx.routes():
+        p = ctx.probe(r, fresh=True)
+        cands = sorted(((raw, o) for raw, o in p.offers if dpop_waive(o) and o.expires + 60 <= ctx.now() + win),
+                       key=lambda x: x[1].route_scope)
+        if not cands:
+            continue
+        raw, o = cands[0]
+        req = ctx.make_req(r, leaf="sweep-" + b64u(os.urandom(4))) if o.route_scope else p.req
+        cred, _, _ = ctx.dpop_credential(req, raw, o)
+        ctx.request(req, credential=cred, label=f"sweep {r.id}")
+
+
+@case("RCPT-EVERY-COMMIT", "10.2", "MUST", "every response to a request that reached commit carries BNAP-Receipt, "
+      "FAILED outcomes included", profiles=WITH_CREDENTIALS)
+def rcpt_every(ctx):
+    _commit_sweep(ctx)
+    # A credentialed request answered without BNAP-Error was not refused, so it reached
+    # commit: whatever its HTTP status (a 5xx from a failed action included), it needs a receipt.
+    xs = [x for x in list(ctx.log) if x.res is not None and (x.carried_credential or x.carried_native)
+          and x.error is None and not x.error_problem]
+    if not xs:
+        raise Skip("no credentialed request was answered without BNAP-Error")
+    bad = [f"{x.label} (HTTP {x.res.status})" for x in xs if not x.has_receipt()]
+    check(not bad, f"{len(bad)} of {len(xs)} responses carry neither BNAP-Receipt nor BNAP-Error: "
+          + ", ".join(bad[:5]))
+
+
 @case("ERR-FORMAT", "8.2", "MUST", "every BNAP-Error parses, has version 1 and the HTTP status of its code",
       profiles=WITH_CREDENTIALS)
 def err_format(ctx):
@@ -1775,14 +1821,6 @@ def err_cache_control(ctx):
             bad.append(f"{x.label} (HTTP {x.res.status}): {cc or 'none'}")
     check(not bad, f"{len(bad)} of {len(xs)}: " + "; ".join(bad[:3]))
 
-
-@case("RCPT-EVERY-COMMIT", "10.2", "MUST", "every admitted response carries BNAP-Receipt", profiles=WITH_CREDENTIALS)
-def rcpt_every(ctx):
-    xs = [x for x in ctx.log if x.res is not None and x.carried_credential and x.res.status < 400]
-    if not xs:
-        raise Skip("no admitted requests")
-    bad = [x.label for x in xs if not x.receipt_raw]
-    check(not bad, "no receipt on: " + ", ".join(bad[:5]))
 
 @case("OFR-NONCE-ONE-MINT", "12", "MUST", "native challenges are minted at most once per offer nonce: exact offers "
       "that share a nonce carry byte-identical natives (DECISIONS row 24)")
