@@ -14,10 +14,10 @@ A conformance suite for [socket draft-00](../spec/socket-draft-00.md), built onl
 | [tests/](tests/) | Unit tests: library against vectors.json, every case through an independent evaluator, the mutation self-check |
 
 ```sh
-python3 -I -m unittest discover -s conformance/tests          # all tests, about two minutes
+python3 -I -m unittest discover -s conformance/tests          # all tests, about a minute and a half
 python3 -I conformance/gen_cases.py --check                    # cases on disk are reproducible
 python3 -I conformance/coverage_check.py                       # COVERAGE.md is complete
-python3 -I conformance/mock_gate.py selftest --max-wait 0      # clean mock green, each fault caught
+python3 -I conformance/mock_gate.py selftest --max-wait 0      # clean mock green, each fault caught (about a minute)
 python3 -I conformance/run.py --list                           # every runner case
 
 python3 -I conformance/run.py --target https://gate.example --profile server --report out/
@@ -26,6 +26,8 @@ python3 -I conformance/run.py --target https://gate.example --profile gateway \
     --payer 'cmd:./pay-invoice.sh' --max-spend-sat 100 --report out/
 ```
 
-`--profile client` is read-only (manifest and offers). `server` adds every credential path that needs no money; `gateway` adds what a gate in front of an application owes it. With `--payer cmd:<command>`, the command gets the BOLT 11 invoice as its last argument and must print the preimage in hex. Reports: `report.json`, `junit.xml` and `report.html` in the `--report` directory. The exit status is 1 when a MUST case fails.
+`--profile client` is read-only (manifest and offers). `server` adds every credential path that needs no money; `gateway` adds what a gate in front of an application owes it. With `--payer cmd:<command>`, the command gets the BOLT 11 invoice as its last argument and must print the preimage in hex. Reports: `report.json`, `junit.xml` and `report.html` in the `--report` directory.
+
+Exit status: 0 when every selected MUST case ran and passed; 1 when a MUST case failed or any case errored; 3 when nothing failed but a MUST case was skipped, for example for want of a payer, a role or a DPoP waive on the target. The verdict is then "incomplete: N MUST cases not run" and `report.json` (`must_skipped`) and `report.html` list them. `--allow-skips` turns 3 into 0 and keeps the list; 2 is a usage error.
 
 Attestation-only flows use DPoP keys the runner makes, in the profile `bnap-conf-dpop-1` ([bnap_conf/dpop.py](bnap_conf/dpop.py)); a target must accept that profile (empty access token, or one from `--dpop-token-cmd`) for those cases to run. Integration notes, assumptions and gaps: [notes/n11-conformance.md](../notes/n11-conformance.md).

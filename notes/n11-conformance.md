@@ -9,17 +9,17 @@ Branch `node/n11` of the spec repository, based on `develop` at `4abe3d5`. This 
 | `conformance/bnap_conf/` | Client library on top of the reference encoder (imported by path, so every primitive is shared): strict codecs (BigSize, tu64, TLV, entry lists, type ranges, even/odd, base64url, Error TLV), Offer parse, registry rules, OfferID, offer_sig, client checks and gate checks of 4.4 in order, Credential parse and build, Context, Digest, ReplayKey, UseId, RailId, counter keys, native envelope, Response and ack with the client's receipt rules, manifest with strict I-JSON (duplicate members rejected at every depth), JCS, root signature, document rules and the 9.3 pin and fetch rules, HTTP scopes, route matching, challenge and SSE parsing, a raw HTTP client, pricing and metering, the use store as a state machine, client choice rules (bnap-required, native challenges), and the DPoP, L402, BOLT 11 and MPP test profiles. BIP-340 and P-256 use Jacobian arithmetic, cross-checked against the reference (identical bytes), BIP-340 vector 0 and RFC 6979 A.2.5 |
 | `conformance/gen_cases.py` | Writes `vectors/cases/*.json` and `vectors/cases/schema/*.schema.json`. Each expectation is stated by hand and cross-checked against the library; a disagreement stops the generator |
 | `vectors/cases/` | 535 cases in 9 files and 42 group types, Wycheproof style, plus a JSON Schema per file and a README |
-| `conformance/run.py` | The black-box runner (87 cases, 80 MUST, 7 SHOULD), sections named after draft-00, JSON, JUnit XML and HTML reports |
-| `conformance/mock_gate.py` | A minimal in-process gate built from the library, with five injectable faults, a fake payer and the `selftest` command |
+| `conformance/run.py` | The black-box runner (91 cases, 84 MUST, 7 SHOULD), sections named after draft-00, JSON, JUnit XML and HTML reports, and a verdict that stays "incomplete" while any MUST case did not run |
+| `conformance/mock_gate.py` | A minimal in-process gate built from the library, with twelve injectable faults plus a `no-dpop` setting, a fake payer and the `selftest` command |
 | `conformance/COVERAGE.md`, `conformance/coverage_check.py` | Every BCP 14 sentence of draft-00 mapped to vector groups and runner cases; the checker re-extracts the sentences and fails on any gap |
-| `conformance/tests/` | 44 unit tests: library against `vectors.json`, every case through an independent evaluator, schemas, reproducibility, the mutation self-check, payer flows, profiles, exit codes, coverage |
+| `conformance/tests/` | 46 unit tests: library against `vectors.json`, every case through an independent evaluator, schemas, reproducibility, the mutation self-check, payer flows, profiles, exit codes, coverage |
 
 ## Usage
 
 From the repository root, with Python 3.11 or later:
 
 ```sh
-python3 -I -m unittest discover -s conformance/tests          # 44 tests, about two minutes
+python3 -I -m unittest discover -s conformance/tests          # 46 tests, about a minute and a half
 python3 -I conformance/gen_cases.py [--check]                  # write, or verify, vectors/cases
 python3 -I conformance/coverage_check.py [--list]              # COVERAGE.md complete; --list prints the sentences
 python3 -I conformance/mock_gate.py selftest [--max-wait 0] [--with-payer] [--report DIR]
@@ -27,35 +27,49 @@ python3 -I conformance/mock_gate.py serve --port 8402 [--fault F]
 python3 -I conformance/run.py --list
 python3 -I conformance/run.py --target https://gate.example --profile client|server|gateway \
     [--payer none|cmd:<command>] [--report out/] [--role NAME=ROUTE_ID]... \
-    [--dpop-token-cmd CMD] [--max-wait 120] [--max-spend-sat 100] [--only ID,...]
+    [--dpop-token-cmd CMD] [--max-wait 120] [--max-spend-sat 100] [--only ID,...] [--allow-skips]
 ```
 
-- **Profiles.** `client` is read-only: the manifest and every route's 402 (31 cases), no credential sent. `server` adds every credential path that needs no money (85 cases). `gateway` adds the two cases that need the application behind the gate (`GW-TARGET` with `--role echo=...`, `GW-SSE` with `--role sse=...`).
+- **Profiles.** `client` is read-only: the manifest and every route's 402 (32 cases), no credential sent. `server` adds every credential path that needs no money (89 cases). `gateway` adds the two cases that need the application behind the gate (`GW-TARGET` with `--role echo=...`, `GW-SSE` with `--role sse=...`).
 - **Roles** name routes with special application behaviour: `slow` (an action of a second or more, for PENDING), `fail` (the application fails, for FAILED replays), `short` (offers that expire within `--max-wait - 61` seconds, for STALE and the 60 s skew), `echo`, `sse`. Without a role the case skips with the reason.
 - **Payer.** `--payer cmd:<command>`: the runner runs the command through the shell with the invoice appended (shell-quoted, after the invoice has been decoded as BOLT 11) and in `BNAP_INVOICE`, checks the printed preimage against the payment hash, and refuses invoices beyond `--max-spend-sat` per action or in total.
-- **Exit status** 0 when no MUST case failed or errored, 1 otherwise, 2 on usage errors. SHOULD failures are reported but do not fail the run.
+- **Exit status** 0 when every selected MUST case ran and passed; 1 when a MUST case failed or any case errored; 3 when nothing failed but a MUST case was skipped (the verdict is then "incomplete: N MUST cases not run", and `report.json` `must_skipped` and `report.html` list the IDs with the reason); 2 on usage errors. `--allow-skips` turns 3 into 0 and keeps the list. SHOULD failures are reported but do not fail the run.
 - **Plain HTTP** needs `--allow-http` (test gates only); `MAN-HTTPS` then skips. `--insecure` skips certificate checks and is reported the same way.
 
 ### Running against a gate
 
 1. The gate must serve the manifest at `/.well-known/bnap` with every route a client may use.
-2. For the attestation flows, at least one route must offer `httpauth:DPoP` with effect `waive` and accept the suite's DPoP profile (below) with an empty access token, or with the token `--dpop-token-cmd` prints for the runner's key thumbprint. Without such a route the attestation section skips.
+2. For the attestation flows, at least one route must offer `httpauth:DPoP` with effect `waive` and accept the suite's DPoP profile (below) with an empty access token, or with the token `--dpop-token-cmd` prints for the runner's key thumbprint. Without such a route the attestation section skips, and the run is incomplete (exit 3), never conformant.
 3. For STALE, give a route whose offers live about a second (`--role short=...`), or the runner waits up to `--max-wait` for the shortest offer it sees.
 4. The value flows need `--payer` and an exact-scope offer with `httpauth:L402` natives (`l402-macaroon` and `bolt11`). `PAY-TWO-SCHEMES` additionally needs a `payment:lightning/charge` entry whose MPP challenge names the same invoice; otherwise it skips.
+5. `RCPT-EVERY-COMMIT` first sends one admissible DPoP-only credential to every route that offers a DPoP waive, roles or not, so a route whose application fails is reached without `--role fail`. Each such route's application therefore runs once more.
+6. `USE-REUSABLE-WINDOW` reads `limits.replay_window`. To test the refusal half, give a route whose offer outlives it (expires + 60 > now + replay_window), with a DPoP waive; the mock's `window` route does that.
 
 ## The mutation self-check
 
-`mock_gate.py selftest` runs the runner against the clean mock and once per fault, in parallel:
+`mock_gate.py selftest` runs the runner against the clean mock, once per fault, once more for `no-receipt-on-failed` with no roles, and twice with the `no-dpop` setting, in parallel (`selftest --with-payer`, about 70 s):
 
 ```
-clean                 all pass                  pass
-strip-attest          ATT-CONTEXT-BOUND         caught (also: ATT-BODY-ONLY, ATT-REQUIRED)
-status-flip           REPLAY-STATUS-STABLE      caught (also: REPLAY-FAILED)
-no-replay             REPLAY-RECORDED           caught (also: ATT-EMPTY-FORMS, ATT-PENDING, ATT-UNKNOWN-ODD, REPLAY-BY-ID, REPLAY-FAILED)
-wrong-scope-accepted  ERR-WRONG-SCOPE-EXACT     caught
-bad-ack               RCPT-ACK                  caught (also: GW-SSE, RCPT-FIELDS, REPLAY-RECORDED)
+clean                          all pass                  pass; verdict incomplete: 3 MUST cases not run
+strip-attest                   ATT-CONTEXT-BOUND         caught (also: ATT-BODY-ONLY, ATT-EXT-BOUND, ATT-REQUIRED)
+status-flip                    REPLAY-STATUS-STABLE      caught (also: REPLAY-FAILED)
+no-replay                      REPLAY-RECORDED           caught (also: ATT-EMPTY-FORMS, ATT-PENDING, ATT-UNKNOWN-ODD, REPLAY-BY-ID, REPLAY-FAILED)
+wrong-scope-accepted           ERR-WRONG-SCOPE-EXACT     caught
+bad-ack                        RCPT-ACK                  caught (also: GW-SSE, RCPT-FIELDS, REPLAY-RECORDED)
+quote-expires-over             OFR-PARSE                 caught (also: OFR-NATIVE-MATCH)
+native-in-route                OFR-ROUTE-CLASSES         caught (also: OFR-PARSE)
+ext-ignored                    ATT-EXT-BOUND             caught
+reusable-window                USE-REUSABLE-WINDOW       caught
+late-expiry                    ERR-EXPIRY-BEFORE-PLUG    caught
+nonce-reuse                    OFR-NONCE-ONE-MINT        caught (also: OFR-NONCE-FRESH)
+no-receipt-on-failed           RCPT-EVERY-COMMIT         caught (also: REPLAY-FAILED)
+no-receipt-on-failed/no-roles  RCPT-EVERY-COMMIT         caught
+no-dpop+no-replay              verdict incomplete        caught: incomplete: 32 MUST cases not run, exit 3
+no-dpop+status-flip+bad-ack    verdict incomplete        caught: incomplete: 32 MUST cases not run, exit 3
 selftest: OK
 ```
+
+A fault row counts as caught only when its case fails and the run exits 1. A `no-dpop` row counts only when nothing failed, the verdict is incomplete, the exit status is 3 and the replay and receipt cases are among those listed as not run.
 
 | Fault | What the mock then does | Case that must fail |
 | --- | --- | --- |
@@ -64,8 +78,16 @@ selftest: OK
 | `no-replay` | The store forgets outcomes, so a replay runs again | `REPLAY-RECORDED` |
 | `wrong-scope-accepted` | Exact-scope offers are accepted for any request | `ERR-WRONG-SCOPE-EXACT` |
 | `bad-ack` | Every Response ack is corrupted | `RCPT-ACK` |
+| `quote-expires-over` | Exact-scope pay entries carry `quote_expires` after `expires` | `OFR-PARSE` |
+| `native-in-route` | Route-scope offers carry a native record | `OFR-ROUTE-CLASSES` |
+| `ext-ignored` | The 5.2 Context leaves `ext` out | `ATT-EXT-BOUND` |
+| `reusable-window` | `replay_window` 120 s and the 6.1 admission check removed | `USE-REUSABLE-WINDOW` |
+| `late-expiry` | Scheme plugs run before the expiry check; STALE comes afterwards | `ERR-EXPIRY-BEFORE-PLUG` |
+| `nonce-reuse` | One fixed nonce per route, a new invoice on every 402 | `OFR-NONCE-ONE-MINT` |
+| `no-receipt-on-failed` | Responses to FAILED outcomes carry no BNAP-Receipt | `RCPT-EVERY-COMMIT`, also without `--role` |
+| `no-dpop` (setting) | No route offers an `httpauth:DPoP` waive | none: the verdict must be incomplete, exit 3 |
 
-The clean run in the unit tests uses the full `--max-wait`, so `ATT-STALE` (expiry plus the 60 s skew) really runs; with the fake payer (`--with-payer`, or `PayerAndProfiles` in the tests) `PAY-L402`, `PAY-OFFER-BINDING`, `PAY-TWO-SCHEMES`, `PAY-MPP` and `PAY-NATIVE` pass too. Against the clean mock the only skips are `MAN-HTTPS` (plain HTTP), `PAY-METERED` and `NOTES-VALUE` (both need a notes wallet), and the payer cases when no payer is given.
+The clean run in the unit tests uses the full `--max-wait`, so `ATT-STALE` and `ERR-EXPIRY-BEFORE-PLUG` (expiry plus the 60 s skew) really run; the `late-expiry` run always keeps the full wait, even under `selftest --max-wait 0`. With the fake payer (`--with-payer`, or `PayerAndProfiles` in the tests) `PAY-L402`, `PAY-OFFER-BINDING`, `PAY-TWO-SCHEMES`, `PAY-MPP` and `PAY-NATIVE` pass too. Against the clean mock no case fails; the verdict is still "incomplete" because `MAN-HTTPS` (plain HTTP), `PAY-METERED` and `NOTES-VALUE` (both need a notes wallet) cannot run there, plus the payer cases when no payer is given. That is the intended reading of a run that did not reach every MUST.
 
 ## Coverage
 
@@ -74,11 +96,11 @@ The clean run in the unit tests uses the full `--max-wait`, so `ATT-STALE` (expi
 | | Sentences |
 | --- | --- |
 | Covered | 29 |
-| Partial (what is not reached is said in the row) | 8: R-4.4-03, R-5.1-05, R-5.3-01, R-5.3-02, R-6.3-01, R-9.2-02, R-12-03, R-12-04 |
+| Partial (what is not reached is said in the row) | 9: R-4.4-02, R-4.4-03, R-5.1-05, R-5.3-01, R-5.3-02, R-6.3-01, R-9.2-02, R-12-03, R-12-04 |
 | Client duty, checked through vectors | 3: R-7-02, R-10.1-02, R-10.2-03 |
-| Untestable black-box, with the reason | 8: R-2-01, R-6.1-01, R-6.1-03, R-6.4-01, R-6.4-02, R-8.2-01, R-9.2-03, R-12-02 |
+| Untestable black-box, with the reason | 7: R-2-01, R-6.1-03, R-6.4-01, R-6.4-02, R-8.2-01, R-9.2-03, R-12-02 |
 | Reached by a vector group | 33 |
-| Reached by a runner case | 40 |
+| Reached by a runner case | 41 |
 | Reached by neither | 2 (R-2-01 signer randomness, R-12-02 synchronous durability) |
 
 Cases per file (valid / invalid / acceptable): bigsize 41 (25/16/0), tlv 53 (27/24/2), offer 139 (43/96/0), credential 61 (37/23/1), response 80 (44/36/0), manifest 62 (26/36/0), http-scope 31 (30/0/1), pricing 47 (35/12/0), outcomes 21 (13/8/0). Every negative case the build task names is present (`test_required_negative_cases_exist`).
@@ -116,16 +138,34 @@ These fill gaps in the spec. If the implementation under test chose differently,
 - **Trailers.** `http.client` drops HTTP trailers, so receipts sent as a `BNAP-Receipt` trailer are not read; event streams are.
 - **Other attestations** (Web Bot Auth, Privacy Pass, NIP-98, World ID) are not exercised: the runner can make only DPoP keys.
 - **Durability, crashes, rate limits and load, rotations over 30 days**: untestable black-box (see COVERAGE.md).
+- **Order among the 4.4 offer checks.** The runner shows that parse, authenticity, expiry and scope each come before any plug, but sends no pair of offer faults that would show version before authenticity or expiry before scope; only the vectors (`offer.json#GateOfferCheck`) fix that order.
+- **Per-address mint limits** (DECISIONS row 24, section 12): one mint per offer nonce is checked; limits per client address need load from many addresses.
 - **Real Lightning.** The value flows were verified only against the mock and its fake payer, never against a real node or wallet.
 - **CI.** No workflow job was added (`.github/` belongs to N12). Suggested job: `python3 -I conformance/gen_cases.py --check`, `python3 -I conformance/coverage_check.py` and `python3 -I -m unittest discover -s conformance/tests` on Python 3.11 and 3.x.
+
+## Repair round 1
+
+Seven review findings, each fixed with a mock fault that proves the fix bites (table above):
+
+| Finding | Fix |
+| --- | --- |
+| Skipped MUST cases still gave "conformant", exit 0 (no DPoP waive, no payer: 31 MUST cases skipped) | Verdict "incomplete: N MUST cases not run", exit 3, skipped IDs in `report.json` and `report.html`; `--allow-skips` for exit 0 |
+| No case sent a non-empty ext (A-5.2) | `ATT-EXT-BOUND`: an odd extension in ext, Context over H(ext), receipt digest checked; an altered ext must be refused |
+| R-6.1-01 marked untestable, though a violation shows at admission | `USE-REUSABLE-WINDOW`: every admission without a single-use ID audited against `limits.replay_window`; offers that outlive the record must be refused |
+| Expiry before plugs was never exercised (R-4.4-02) | `ERR-EXPIRY-BEFORE-PLUG`: garbage value body under an expired offer must be STALE, not BAD_CREDENTIAL; R-4.4-02 now partial |
+| D-24 (one invoice per nonce, a MUST) mapped to the SHOULD case `OFR-NONCE-FRESH` | `OFR-NONCE-ONE-MINT` (MUST): offers sharing a nonce carry byte-identical natives; D-24 and R-12-04 corrected |
+| `OFR-PARSE` checked size only; the native-in-route check of `OFR-ROUTE-CLASSES` was dead code | Parse failures fail `OFR-PARSE`; `OFR-ROUTE-CLASSES` reads route_scope and native records from the raw bytes of offers that did not parse |
+| `RCPT-EVERY-COMMIT` ignored responses of HTTP 400 and above, FAILED outcomes included | Every credentialed response without BNAP-Error must carry a receipt; the case first commits once on every DPoP-waive route, so `--role fail` is not needed |
+
+Also in this round: the mock gate no longer calls `socket.getfqdn()` on bind (a reverse DNS lookup that cost about 35 s per mock start where DNS is blocked), which brought the unit suite from about 127 s to about 98 s, and the mock gained a `window` route whose route offer outlives its `replay_window` of 7,200 s.
 
 ## Stop-condition evidence
 
 | Condition | Command | Result |
 | --- | --- | --- |
-| Unit tests green | `python3 -I -m unittest discover -s conformance/tests` | `Ran 44 tests ... OK` (Python 3.15; the fast subset also on 3.12; every file parses under the 3.9 grammar, so no 3.12-only f-strings) |
-| Generator reproducible | `gen_cases.py` twice, SHA-256 of all 18 files | identical both times (`b9e25bb1...02698ed5`); `--check` up to date |
-| Runner vs clean mock green | `mock_gate.py selftest` | `clean all pass` (the unit test also runs ATT-STALE with the full wait) |
-| Each fault detected | `mock_gate.py selftest` | five of five caught by their case |
-| COVERAGE.md complete | `coverage_check.py` | 48 normative sentences, every one mapped; 47 further rows checked |
-| Leak guard | `sh ops/leak-guard.sh` | clean |
+| Unit tests green | `python3 -I -m unittest discover -s conformance/tests` | `Ran 46 tests in 97.9s OK` (Python 3.15); `PayerAndProfiles` also on 3.12; every file parses under the 3.9 grammar |
+| Generator reproducible | `gen_cases.py` twice, then SHA-256 over the sorted per-file SHA-256 list of `vectors/cases` | identical both times (`72ced574...1d2b94e7`); `--check` up to date. Unchanged in repair round 1 |
+| Runner vs clean mock green | `mock_gate.py selftest --with-payer` | `clean all pass`: 88 pass, 0 fail; verdict incomplete only for `MAN-HTTPS`, `PAY-METERED` and `NOTES-VALUE`, which the mock cannot reach (the unit test runs the clean mock with the full wait) |
+| Each fault detected | `mock_gate.py selftest --with-payer` | twelve of twelve caught by their case with exit 1, `no-receipt-on-failed` also without roles, and both `no-dpop` runs incomplete with exit 3 |
+| COVERAGE.md complete | `coverage_check.py` | 48 normative sentences, every one mapped (33 by vectors, 41 by runner cases); 47 further rows checked |
+| Leak guard | `sh ops/leak-guard.sh` | clean (95 tracked files) |
