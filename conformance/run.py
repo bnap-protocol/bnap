@@ -5,7 +5,7 @@ Usage:
   python3 -I conformance/run.py --target https://host --profile gateway|server|client
       [--payer none|cmd:<shell command>] [--report DIR]
       [--role NAME=ROUTE_ID]... [--dpop-token-cmd CMD] [--max-wait S]
-      [--max-spend-sat N] [--allow-http] [--insecure] [--only ID,...] [--list]
+      [--max-spend-sat N] [--allow-http] [--insecure] [--only ID,...] [--allow-skips] [--list]
 
 Profiles:
   client   read-only: the manifest and the 402 offers, everything a client
@@ -34,7 +34,11 @@ adapter profile bnap-conf-dpop-1 (bnap_conf/dpop.py). --dpop-token-cmd CMD
 gets the key's JWK thumbprint (base64url) appended and must print an access
 token bound to it; without it the access token is empty.
 
-Exit status: 0 when no MUST case failed, 1 when one did, 2 on a usage error.
+Exit status: 0 when every MUST case selected ran and passed; 1 when a MUST case
+failed or any case errored; 3 when none failed but some MUST case was skipped
+(the verdict is then "incomplete" and the reports list the skipped IDs);
+2 on a usage error. --allow-skips turns 3 into 0; the reports still list the
+skipped MUST cases.
 Standard library only, Python 3.11 or later. Run with python3 -I.
 """
 import argparse
@@ -61,6 +65,7 @@ from bnap_conf.codec import BnapError, b64u, b64u_decode, H  # noqa: E402
 from bnap_conf.crypto import schnorr_pub, schnorr_sign, key_from_label  # noqa: E402
 
 VERSION = "bnap-conformance 0.1 (draft-00)"
+EXIT_OK, EXIT_FAIL, EXIT_USAGE, EXIT_INCOMPLETE = 0, 1, 2, 3
 PROFILES = ("client", "server", "gateway")
 ALL = PROFILES
 WITH_CREDENTIALS = ("server", "gateway")
@@ -1651,11 +1656,35 @@ class RunResult:
     def must_failures(self):
         return [r for r in self.results if r.status in ("fail", "error") and r.case.level == "MUST"]
 
+    def must_skips(self):
+        """MUST cases that did not run. A gate is not shown conformant while any remain."""
+        return [r for r in self.results if r.status == "skip" and r.case.level == "MUST"]
+
+    def failed(self):
+        return bool(self.must_failures()) or any(r.status == "error" for r in self.results)
+
+    def verdict(self):
+        if self.failed():
+            return "not conformant"
+        n = len(self.must_skips())
+        if n:
+            v = f"incomplete: {n} MUST case{'' if n == 1 else 's'} not run"
+            return v + (" (accepted with --allow-skips)" if self.args.allow_skips else "")
+        return "conformant for this profile"
+
+    def exit_status(self):
+        if self.failed():
+            return EXIT_FAIL
+        if self.must_skips() and not self.args.allow_skips:
+            return EXIT_INCOMPLETE
+        return EXIT_OK
+
     def summary(self):
         s = {k: 0 for k in ("pass", "fail", "skip", "error")}
         for r in self.results:
             s[r.status] += 1
         s["must_fail"] = len(self.must_failures())
+        s["must_skip"] = len(self.must_skips())
         s["should_fail"] = sum(1 for r in self.results if r.status == "fail" and r.case.level == "SHOULD")
         return s
 
@@ -1700,6 +1729,8 @@ def parse_args(argv):
     ap.add_argument("--allow-http", action="store_true", help="allow a plain-HTTP target (test gates only)")
     ap.add_argument("--insecure", action="store_true", help="do not verify the TLS certificate (test gates only)")
     ap.add_argument("--only", help="comma-separated case IDs")
+    ap.add_argument("--allow-skips", action="store_true",
+                    help="exit 0 even when MUST cases were skipped (the verdict still says incomplete)")
     ap.add_argument("--list", action="store_true", help="list the cases and exit")
     a = ap.parse_args(argv)
     if a.list:
@@ -1758,7 +1789,10 @@ def run(argv, quiet=False):
     if not quiet:
         s = rr.summary()
         print(f"\n{s['pass']} passed, {s['fail']} failed ({s['must_fail']} MUST, {s['should_fail']} SHOULD), "
-              f"{s['error']} errors, {s['skip']} skipped")
+              f"{s['error']} errors, {s['skip']} skipped ({s['must_skip']} MUST)")
+        print("verdict:", rr.verdict())
+        if rr.must_skips():
+            print("MUST cases not run: " + ", ".join(r.case.id for r in rr.must_skips()))
     return rr
 
 
@@ -1777,7 +1811,11 @@ def write_reports(rr, out):
     s = rr.summary()
     data = {"tool": VERSION, "target": rr.args.target, "profile": rr.args.profile,
             "payer": "none" if rr.args.payer == "none" else "cmd", "started": int(rr.started),
-            "finished": int(rr.finished), "summary": s, "results": [r.to_json() for r in rr.results]}
+            "finished": int(rr.finished), "verdict": rr.verdict(), "exit_status": rr.exit_status(),
+            "allow_skips": bool(rr.args.allow_skips), "summary": s,
+            "must_skipped": [{"id": r.case.id, "section": r.case.section, "reason": r.detail}
+                             for r in rr.must_skips()],
+            "results": [r.to_json() for r in rr.results]}
     (out / "report.json").write_text(json.dumps(data, indent=1) + "\n")
     suites = ET.Element("testsuites", name="bnap-conformance", tests=str(len(rr.results)),
                         failures=str(s["fail"]), errors=str(s["error"]), skipped=str(s["skip"]))
@@ -1815,7 +1853,13 @@ def render_html(rr, s):
             rows.append(f'<tr class="{r.status}"><td class="st">{r.status.upper()}</td><td><code>{e(r.case.id)}'
                         f'</code></td><td>{e(r.case.section)}</td><td>{e(r.case.level)}</td><td>{e(r.case.title)}'
                         + (f'<div class="d">{e(r.detail)}</div>' if r.detail else "") + "</td></tr>")
-    verdict = "conformant for this profile" if not s["must_fail"] and not s["error"] else "not conformant"
+    verdict = rr.verdict()
+    vclass = "fail" if rr.failed() else ("skip" if rr.must_skips() else "pass")
+    skipped = "".join(f'<li><code>{e(r.case.id)}</code> ({e(r.case.section)}) {e(r.detail)}</li>'
+                      for r in rr.must_skips())
+    skipped_block = (f'<section class="notrun"><h2>MUST cases not run ({len(rr.must_skips())})</h2>'
+                     f'<p>Until these run and pass, this report does not show the target conformant.</p>'
+                     f'<ul>{skipped}</ul></section>') if skipped else ""
     when = time.strftime("%Y-%m-%d %H:%M:%S UTC", time.gmtime(rr.started))
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -1843,13 +1887,20 @@ tr.pass td.st {{ color:var(--pass); }} tr.fail td.st {{ color:var(--fail); }}
 tr.skip td.st {{ color:var(--skip); }} tr.error td.st {{ color:var(--error); }}
 .d {{ color:var(--muted); font-size:13px; overflow-wrap:anywhere; }}
 code {{ font-size:13px; }}
+p.verdict {{ font-size:17px; font-weight:600; margin:0 0 16px; }}
+p.verdict.pass {{ color:var(--pass); }} p.verdict.fail {{ color:var(--fail); }} p.verdict.skip {{ color:var(--skip); }}
+section.notrun {{ border:1px solid var(--line); border-radius:8px; padding:4px 14px; margin:0 0 20px; }}
+section.notrun h2 {{ font-size:16px; font-weight:600; margin:8px 0 4px; }}
+section.notrun li {{ overflow-wrap:anywhere; }}
 </style></head><body><main>
 <h1>BNAP conformance report</h1>
 <p class="meta">{e(VERSION)} &middot; target {e(rr.args.target)} &middot; profile {e(rr.args.profile)} &middot;
-payer {e("none" if rr.args.payer == "none" else "command")} &middot; {e(when)} &middot; {e(verdict)}</p>
+payer {e("none" if rr.args.payer == "none" else "command")} &middot; {e(when)}</p>
+<p class="verdict {vclass}">Verdict: {e(verdict)}</p>
 <div class="sum"><div><b>{s['pass']}</b>passed</div><div><b>{s['must_fail']}</b>MUST failed</div>
 <div><b>{s['should_fail']}</b>SHOULD failed</div><div><b>{s['error']}</b>errors</div>
-<div><b>{s['skip']}</b>skipped</div></div>
+<div><b>{s['skip']}</b>skipped</div><div><b>{s['must_skip']}</b>MUST not run</div></div>
+{skipped_block}
 <div class="wrap"><table><thead><tr><th>Result</th><th>Case</th><th>Section</th><th>Level</th><th>Requirement</th>
 </tr></thead><tbody>
 {chr(10).join(rows)}
@@ -1860,8 +1911,8 @@ payer {e("none" if rr.args.payer == "none" else "command")} &middot; {e(when)} &
 def main(argv=None):
     rr = run(sys.argv[1:] if argv is None else argv)
     if rr is None:
-        return 0
-    return 1 if rr.must_failures() or any(r.status == "error" for r in rr.results) else 0
+        return EXIT_OK
+    return rr.exit_status()
 
 
 if __name__ == "__main__":

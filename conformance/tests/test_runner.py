@@ -27,7 +27,7 @@ class MutationSelfCheck(unittest.TestCase):
         cls.tmp.cleanup()
 
     def test_clean_mock_is_green(self):
-        clean = self.results[None]
+        clean = self.results["clean"]
         bad = [(r.case.id, r.detail) for r in clean.results if r.status in ("fail", "error")]
         self.assertEqual(bad, [])
         stale = [r for r in clean.results if r.case.id == "ATT-STALE"][0]
@@ -35,6 +35,36 @@ class MutationSelfCheck(unittest.TestCase):
         skipped = {r.case.id for r in clean.results if r.status == "skip"}
         self.assertLessEqual(skipped, {"MAN-HTTPS", "PAY-L402", "PAY-OFFER-BINDING", "PAY-TWO-SCHEMES", "PAY-MPP",
                                        "PAY-NATIVE", "PAY-METERED", "NOTES-VALUE"})
+
+    def test_clean_without_payer_is_incomplete_not_conformant(self):
+        # The value flows and MAN-HTTPS did not run, so the verdict must not be "conformant".
+        clean = self.results["clean"]
+        self.assertEqual(clean.must_failures(), [])
+        self.assertTrue(clean.verdict().startswith("incomplete: "), clean.verdict())
+        self.assertEqual(clean.exit_status(), run.EXIT_INCOMPLETE)
+        self.assertIn("PAY-L402", {r.case.id for r in clean.must_skips()})
+
+    def test_skipped_must_cases_are_never_conformant(self):
+        # A gate that offers no DPoP waive leaves the replay and receipt cases unrun:
+        # with no-replay, status-flip and bad-ack it must still not pass as conformant.
+        for name, (faults, must) in mock_gate.INCOMPLETE_PLANS.items():
+            with self.subTest(plan=name):
+                rr = self.results[name]
+                self.assertEqual([r.case.id for r in rr.results if r.status in ("fail", "error")], [])
+                self.assertTrue(rr.verdict().startswith("incomplete: "), rr.verdict())
+                self.assertEqual(rr.exit_status(), run.EXIT_INCOMPLETE)
+                self.assertLessEqual(set(must), {r.case.id for r in rr.must_skips()})
+                data = json.loads((pathlib.Path(self.tmp.name) / name / "report.json").read_text())
+                self.assertEqual(data["exit_status"], run.EXIT_INCOMPLETE)
+                self.assertTrue(data["verdict"].startswith("incomplete: "))
+                listed = {x["id"] for x in data["must_skipped"]}
+                self.assertLessEqual(set(must), listed)
+                self.assertEqual(data["summary"]["must_skip"], len(listed))
+                page = (pathlib.Path(self.tmp.name) / name / "report.html").read_text()
+                self.assertNotIn("conformant for this profile", page)
+                self.assertIn("MUST cases not run", page)
+                for cid in must:
+                    self.assertIn(f"<code>{cid}</code>", page)
 
     def test_each_fault_is_caught_by_its_case(self):
         for fault, case_id in mock_gate.FAULT_CASES.items():
@@ -47,7 +77,7 @@ class MutationSelfCheck(unittest.TestCase):
         out = pathlib.Path(self.tmp.name) / "clean"
         data = json.loads((out / "report.json").read_text())
         self.assertEqual(data["summary"]["must_fail"], 0)
-        self.assertEqual(len(data["results"]), len(self.results[None].results))
+        self.assertEqual(len(data["results"]), len(self.results["clean"].results))
         root = ET.parse(out / "junit.xml").getroot()
         self.assertEqual(root.tag, "testsuites")
         self.assertTrue(all(s.get("name")[0].isdigit() for s in root))
@@ -96,6 +126,12 @@ class PayerAndProfiles(unittest.TestCase):
             self.assertEqual(run.main(mock_gate.runner_args(bad, extra=["--max-wait", "0", "--only", "RCPT-ACK"])), 1)
         finally:
             bad.stop()
+        # MAN-HTTPS skips over plain HTTP: a skipped MUST case is exit 3, unless --allow-skips.
+        only_skip = mock_gate.runner_args(self.gate, extra=["--max-wait", "0", "--only", "MAN-HTTPS"])
+        self.assertEqual(run.main(only_skip), run.EXIT_INCOMPLETE)
+        self.assertEqual(run.main(only_skip + ["--allow-skips"]), 0)
+        rr = run.run(only_skip + ["--allow-skips"], quiet=True)
+        self.assertIn("--allow-skips", rr.verdict())
         with self.assertRaises(SystemExit) as cm:
             run.parse_args(["--target", "http://example.test"])
         self.assertEqual(cm.exception.code, 2)

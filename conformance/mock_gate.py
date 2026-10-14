@@ -19,6 +19,9 @@ Faults:
   no-replay             the store forgets outcomes, so a replay runs again
   wrong-scope-accepted  exact-scope offers are accepted for any request
   bad-ack               every Response ack is corrupted
+  no-dpop               no route offers an httpauth:DPoP waive (not a fault in
+                        itself: without a payer the runner can then reach no
+                        admission, and must say so instead of passing)
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -46,7 +49,7 @@ from bnap_conf import http as hp, pricing as pr, store as st, dpop, lightning as
 from bnap_conf.codec import BnapError, b64u, b64u_decode  # noqa: E402
 from bnap_conf.crypto import schnorr_pub, key_from_label  # noqa: E402
 
-FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "bad-ack")
+FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "bad-ack", "no-dpop")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -108,6 +111,7 @@ class MockGate:
                 raise ValueError("unknown fault " + f)
         self.faults = set(faults)
         self.short_ttl = short_ttl
+        self.routes = [self._route_for_faults(r) for r in ROUTES]
         self.root_sk = key_from_label("bnap mock root key")
         self.backup_sk = key_from_label("bnap mock backup key")
         self.offer_sk = key_from_label("bnap mock offer key")
@@ -145,6 +149,12 @@ class MockGate:
     def url(self):
         return self.origin
 
+    def _route_for_faults(self, r):
+        r = json.loads(json.dumps(r))
+        if "no-dpop" in self.faults:
+            r["attest"] = [a for a in r["attest"] if not (a["scheme"] == "httpauth:DPoP" and a["effect"] == "waive")]
+        return r
+
     # ------------------------------------------------------------ manifest
 
     def _manifest(self):
@@ -156,7 +166,7 @@ class MockGate:
                       {"kid": schnorr_pub(self.receipt_sk).hex(), "use": "receipt", "not_after": na}],
              "limits": {"replay_window": REPLAY_WINDOW, "pending_timeout": PENDING_TIMEOUT,
                         "max_offer": 4096, "max_credential": 16384, "max_response": 8192},
-             "carriers": ["http"], "routes": ROUTES}
+             "carriers": ["http"], "routes": self.routes}
         return mf.jcs(mf.sign_manifest(m, self.root_sk))
 
     # ------------------------------------------------------------ offers
@@ -248,7 +258,7 @@ class MockGate:
     # ------------------------------------------------------------ request handling
 
     def match(self, method, target):
-        for r in ROUTES:
+        for r in self.routes:
             if hp.route_matches(r["match"], method, target):
                 return r
         return None
@@ -569,9 +579,9 @@ class _Handler(BaseHTTPRequestHandler):
     do_PATCH = _do
 
 
-def runner_args(gate, report=None, with_payer=False, extra=()):
+def runner_args(gate, report=None, with_payer=False, extra=(), roles=True):
     args = ["--target", gate.url, "--profile", "gateway", "--allow-http"]
-    for role, rid in ROLES.items():
+    for role, rid in (ROLES.items() if roles else ()):
         args += ["--role", f"{role}={rid}"]
     if with_payer:
         args += ["--payer", "cmd:%s -I %s pay --gate %s" % (sys.executable, HERE / "mock_gate.py", gate.url),
@@ -592,39 +602,67 @@ FAULT_CASES = {
     "bad-ack": "RCPT-ACK",
 }
 
+# Fault sets under which no admission is reachable without a payer: the runner
+# must not call the gate conformant. Expected verdict "incomplete", exit 3, and
+# these MUST cases among the ones listed as not run.
+INCOMPLETE = "incomplete"
+INCOMPLETE_PLANS = {
+    "no-dpop+no-replay": (("no-dpop", "no-replay"), ("REPLAY-RECORDED", "ATT-ADMIT")),
+    "no-dpop+status-flip+bad-ack": (("no-dpop", "status-flip", "bad-ack"),
+                                    ("REPLAY-STATUS-STABLE", "RCPT-ACK", "ATT-ADMIT")),
+}
+
+
+def _plans():
+    """(name, faults, expectation, runner keyword arguments) for every selftest run."""
+    out = [("clean", (), None, {})]
+    out += [(f, (f,), FAULT_CASES[f], {}) for f in FAULT_CASES]
+    out += [(name, faults, (INCOMPLETE, must), {}) for name, (faults, must) in INCOMPLETE_PLANS.items()]
+    return out
+
 
 def selftest(report=None, with_payer=False, max_wait=None):
     import run as runner
     rows, ok = [], True
-    plans = [(None, ())] + [(f, (f,)) for f in FAULTS]
+    plans = _plans()
     results = {}
 
-    def one(name, faults):
+    def one(name, faults, kw):
         g = MockGate(faults=faults).start()
         try:
-            rep = pathlib.Path(report) / (name or "clean") if report else None
+            rep = pathlib.Path(report) / name if report else None
             extra = ["--max-wait", str(max_wait)] if max_wait is not None else []
-            results[name] = runner.run(runner_args(g, rep, with_payer and not name, extra), quiet=True)
+            args = runner_args(g, rep, with_payer and name == "clean", extra, **kw)
+            results[name] = runner.run(args, quiet=True)
         finally:
             g.stop()
 
-    threads = [threading.Thread(target=one, args=p) for p in plans]
+    threads = [threading.Thread(target=one, args=(n, f, kw)) for n, f, _, kw in plans]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
-    clean = results[None]
-    fails = [r for r in clean.results if r.status in ("fail", "error")]
-    rows.append(("clean", "all pass", "pass" if not fails else "FAIL: " + ", ".join(r.case.id for r in fails)))
-    ok &= not fails
-    for f in FAULTS:
-        res = results[f]
-        want = FAULT_CASES[f]
-        hit = [r for r in res.results if r.case.id == want]
-        caught = bool(hit) and hit[0].status == "fail"
-        others = sorted(r.case.id for r in res.results if r.status == "fail" and r.case.id != want)
-        rows.append((f, want, ("caught" if caught else "MISSED") + (f" (also: {', '.join(others)})" if others else "")))
-        ok &= caught
+    for name, faults, want, kw in plans:
+        res = results[name]
+        if want is None:
+            fails = [r for r in res.results if r.status in ("fail", "error")]
+            rows.append((name, "all pass", ("pass" if not fails else "FAIL: " + ", ".join(r.case.id for r in fails))
+                         + f"; verdict {res.verdict()}"))
+            ok &= not fails
+        elif isinstance(want, tuple) and want[0] == INCOMPLETE:
+            skipped = {r.case.id for r in res.must_skips()}
+            good = (res.verdict().startswith(INCOMPLETE) and res.exit_status() == runner.EXIT_INCOMPLETE
+                    and set(want[1]) <= skipped)
+            rows.append((name, "verdict incomplete", ("caught" if good else "MISSED") + f": {res.verdict()}, "
+                         f"exit {res.exit_status()}"))
+            ok &= good
+        else:
+            hit = [r for r in res.results if r.case.id == want]
+            caught = bool(hit) and hit[0].status == "fail"
+            others = sorted(r.case.id for r in res.results if r.status == "fail" and r.case.id != want)
+            rows.append((name, want, ("caught" if caught else "MISSED")
+                         + (f" (also: {', '.join(others)})" if others else "")))
+            ok &= caught and res.exit_status() == runner.EXIT_FAIL
     return ok, rows, results
 
 
