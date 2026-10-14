@@ -160,6 +160,26 @@ def check_sizes():
     # The 10.3 price, 1,680 sat, needs the verified Web Bot Auth discount: with the attest record.
     attest_rec = len(r.tlv([(6, r.entry_list([r.tlv([(0, b"httpsig:web-bot-auth"), (2, WBA_BODY)])]))]))
     assert attest_rec == 91
+
+    # A real body of L bytes: 1 + BigSize(n) + n, n = BigSize(m) + m, m = 22 + 1 + BigSize(L) + L.
+    def attest_len(n_body):
+        return len(r.tlv([(6, r.entry_list([r.tlv([(0, b"httpsig:web-bot-auth"),
+                                                    (2, bytes(n_body))])]))]))
+
+    def attest_formula(n_body):
+        m = 22 + 1 + len(r.bigsize(n_body)) + n_body
+        n = len(r.bigsize(m)) + m
+        return 1 + len(r.bigsize(n)) + n
+
+    for n_body, size in ((64, 91), (227, 254), (228, 257), (229, 260), (252, 283), (253, 286),
+                         (300, 333)):
+        assert attest_len(n_body) == attest_formula(n_body) == size, (n_body, attest_len(n_body))
+    # "Length minus 64" holds up to 227 bytes, then is short by 2 (228), 4 (229 to 252) and
+    # 6 (253 on, as far as the 16,384-byte credential cap of draft-00 section 2 reaches).
+    for n_body in range(1, 16385):
+        extra = attest_len(n_body) - (91 + n_body - 64)
+        want = 0 if n_body <= 227 else 2 if n_body == 228 else 4 if n_body <= 252 else 6
+        assert extra == want and attest_formula(n_body) == attest_len(n_body), n_body
     assert price(2100, True) == 1680 and price(2100, False) == 2100
     sizes = {}
     for name, inputs in (("four on B", [("B", 1024), ("B", 512), ("B", 128), ("B", 16)]),
