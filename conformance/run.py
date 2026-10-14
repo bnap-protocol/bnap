@@ -28,6 +28,8 @@ Roles name manifest routes with a special application behaviour:
   short=ID  a route whose offers expire within --max-wait - 61 seconds
   echo=ID   (gateway) the application echoes the request-target as JSON {"target"}
   sse=ID    (gateway) the application answers with text/event-stream
+  cache=ID  (gateway) the application sends its own Cache-Control, such as
+            "public, max-age=60", which the gate must amend to private, no-store
 
 Attestation-only flows use DPoP keys the runner makes, in the suite's
 adapter profile bnap-conf-dpop-1 (bnap_conf/dpop.py). --dpop-token-cmd CMD
@@ -2007,18 +2009,40 @@ def err_format(ctx):
     check(not bad, "; ".join(bad[:4]))
 
 
+def _cache_directives(res):
+    return ",".join(res.headers_all("Cache-Control")).lower().replace(" ", "").split(",")
+
+
 @case("ERR-CACHE-CONTROL", "10.2", "MUST", "every response to a request with BNAP-Credential has "
-      "Cache-Control: private, no-store", profiles=WITH_CREDENTIALS)
+      "Cache-Control: private, no-store, also when the application sent its own Cache-Control "
+      "(gateway: needs --role cache)", profiles=WITH_CREDENTIALS)
 def err_cache_control(ctx):
+    app_ex, missing = None, None
+    if "cache" in ctx.roles:
+        route = ctx.role_route("cache")
+        p = ctx.probe(route)
+        hit = next(((raw, o) for raw, o in p.offers if dpop_waive(o)), None)
+        if hit is None:
+            missing = "the cache route offers no DPoP waive, so its application cannot be reached"
+        else:
+            cred, _, _ = ctx.dpop_credential(p.req, hit[0], hit[1])
+            app_ex = ctx.request(p.req, credential=cred, label="cache: the application sets Cache-Control")
+            expect_admitted(app_ex)
+    else:
+        missing = ("needs --role cache=ROUTE_ID, a route whose application sends its own Cache-Control, to show "
+                   "the gate adds private, no-store where the application did not")
     xs = [x for x in ctx.log if x.res is not None and x.carried_credential]
     if not xs:
         raise Skip("no credentials sent")
     bad = []
     for x in xs:
-        cc = ",".join(x.res.headers_all("Cache-Control")).lower().replace(" ", "")
-        if "private" not in cc.split(",") or "no-store" not in cc.split(","):
-            bad.append(f"{x.label} (HTTP {x.res.status}): {cc or 'none'}")
+        cc = _cache_directives(x.res)
+        if "private" not in cc or "no-store" not in cc:
+            bad.append(f"{x.label} (HTTP {x.res.status}): {','.join(c for c in cc if c) or 'none'}")
+    # The cache role's exchange is among xs: an application's own Cache-Control must not pass unamended.
     check(not bad, f"{len(bad)} of {len(xs)}: " + "; ".join(bad[:3]))
+    if app_ex is None and ctx.args.profile == "gateway":
+        raise Skip("every credentialed response carried private, no-store, but " + missing)
 
 
 @case("OFR-NONCE-ONE-MINT", "12", "MUST", "native challenges are minted at most once per offer nonce: exact offers "
@@ -2185,7 +2209,8 @@ def parse_args(argv):
     ap.add_argument("--payer", default="none", help="none, or cmd:<shell command that pays a bolt11 and prints "
                                                     "the preimage>")
     ap.add_argument("--report", help="directory for report.json, junit.xml and report.html")
-    ap.add_argument("--role", action="append", default=[], help="NAME=ROUTE_ID (slow, fail, short, echo, sse)")
+    ap.add_argument("--role", action="append", default=[], help="NAME=ROUTE_ID (slow, fail, short, echo, sse, "
+                                                                 "cache)")
     ap.add_argument("--dpop-token-cmd", help="prints an access token for the thumbprint given as last argument")
     ap.add_argument("--max-wait", type=int, default=120, help="longest wait a case may take, in seconds")
     ap.add_argument("--max-spend-sat", type=int, default=100, help="total the payer may spend")

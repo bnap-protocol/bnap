@@ -44,6 +44,8 @@ Faults:
   offer-version-masked  the MAC is checked before the offer version, so a version 2 offer is BAD_OFFER
   high-s-accepted       the DPoP adapter accepts a high-S ES256 signature (plain ECDSA), so a copy of a
                         proof with s replaced by n - s verifies under another ReplayKey
+  cache-control-kept    the gate adds Cache-Control: private, no-store only when the application sent no
+                        Cache-Control at all, so the cache route's "public, max-age=60" goes out unchanged
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -75,7 +77,7 @@ FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "b
           "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window", "late-expiry",
           "nonce-reuse", "no-receipt-on-failed", "nested-odd-rejected", "nested-odd-in-rk", "nested-even-ignored",
           "ext-even-ignored", "offer-size-unchecked", "htu-from-host", "scope-from-host", "top-odd-in-digest",
-          "scope-before-expiry", "offer-version-masked", "high-s-accepted")
+          "scope-before-expiry", "offer-version-masked", "high-s-accepted", "cache-control-kept")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -102,6 +104,9 @@ ROUTES = [
      "pay": ["httpauth:L402"], "attest": [WAIVE], "headers": []},
     {"id": "echo", "match": "GET /conformance/echo/*", "scope": "exact", "price": {"sat": 1},
      "pay": ["httpauth:L402"], "attest": [WAIVE], "headers": []},
+    # Its application sends Cache-Control: public, max-age=60; the gate must still send private, no-store.
+    {"id": "cache", "match": "GET /conformance/cache", "scope": "exact", "price": {"sat": 1},
+     "pay": ["httpauth:L402"], "attest": [WAIVE], "headers": []},
     {"id": "headers", "match": "GET /conformance/headers", "scope": "exact", "price": {"sat": 1},
      "pay": ["httpauth:L402"], "attest": [WAIVE], "headers": ["accept", "x-conformance"]},
     # Its route offer lives a day, past replay_window: a DPoP-only credential under it
@@ -109,7 +114,7 @@ ROUTES = [
     {"id": "window", "match": "GET /conformance/window", "scope": "route", "price": {"sat": 1},
      "pay": ["bnap:notes"], "attest": [WAIVE], "headers": []},
 ]
-ROLES = {"slow": "slow", "fail": "fail", "sse": "sse", "echo": "echo", "short": "short"}
+ROLES = {"slow": "slow", "fail": "fail", "sse": "sse", "echo": "echo", "short": "short", "cache": "cache"}
 
 EXACT_TTL = 300
 ROUTE_TTL = 3600
@@ -324,8 +329,12 @@ class MockGate:
             reply = self._process(route, method, target, headers, body, scope, now)
         except GateError as e:
             reply = self._error(e, route, scope, listed, now)
-        if has_cred and not any(k.lower() == "cache-control" for k, _ in reply.headers):
-            reply.headers.append(("Cache-Control", "private, no-store"))
+        if has_cred:
+            if "cache-control-kept" in self.faults:
+                if not any(k.lower() == "cache-control" for k, _ in reply.headers):
+                    reply.headers.append(("Cache-Control", "private, no-store"))
+            else:
+                reply.headers = _private_no_store(reply.headers)
         return reply
 
     def _host_origin(self, headers):
@@ -631,7 +640,21 @@ class MockGate:
                 "data: hello\n\nevent: bnap-receipt\ndata: forged by the application\n\ndata: bye\n\n").encode(), None
         if rid == "echo":
             return 200, js, json.dumps({"target": target, "run": n}).encode(), None
+        if rid == "cache":
+            return 200, js + [("Cache-Control", "public, max-age=60")], json.dumps({"run": n}).encode(), None
         return 200, js, json.dumps({"ok": True, "route": rid, "run": n}).encode(), None
+
+
+def _private_no_store(headers):
+    """10.2: whatever Cache-Control the application sent, the response carries private and no-store.
+    The application's other directives stay, except public, which private replaces."""
+    keep = []
+    for k, v in headers:
+        if k.lower() == "cache-control":
+            keep += [d.strip() for d in v.split(",") if d.strip() and d.strip().lower() not in
+                     ("public", "private", "no-store")]
+    return [(k, v) for k, v in headers if k.lower() != "cache-control"] + [
+        ("Cache-Control", ", ".join(keep + ["private", "no-store"]))]
 
 
 def _strip_item_even(item):
@@ -768,6 +791,7 @@ FAULT_CASES = {
     "scope-before-expiry": "ERR-EXPIRY-BEFORE-PLUG",
     "offer-version-masked": "ERR-OFFER-VERSION",
     "high-s-accepted": "ATT-CANONICAL-BODY",
+    "cache-control-kept": "ERR-CACHE-CONTROL",
 }
 
 # Faults that must also be caught when the runner is given no --role at all.

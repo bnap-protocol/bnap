@@ -22,7 +22,7 @@ python3 -I conformance/run.py --list                           # every runner ca
 
 python3 -I conformance/run.py --target https://gate.example --profile server --report out/
 python3 -I conformance/run.py --target https://gate.example --profile gateway \
-    --role echo=echo --role sse=sse --role slow=slow --role fail=fail --role short=short \
+    --role echo=echo --role sse=sse --role slow=slow --role fail=fail --role short=short --role cache=cache \
     --payer 'cmd:./pay-invoice.sh' --max-spend-sat 100 --report out/
 ```
 
