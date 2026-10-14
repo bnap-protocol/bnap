@@ -103,7 +103,7 @@ def check_sizes():
     out1 = len(r.lp(r.tlv([(0, KEYSET_ID), (2, r.tu64(1)), (4, POINT)])))
     assert (in1, out1) == (108, 74), (in1, out1)  # 109 and 75 with a 2-byte amount
 
-    # The largest case: 16 inputs on keyset B, 1, 2, ..., 16,384 and a second 16,384.
+    # A 16-input example: keyset B, 1, 2, ..., 16,384 and a second 16,384.
     big = [("B", 2 ** i) for i in range(15)] + [("B", 16384)]
     assert sum(1 for _, a in big if a < 256) == 8 and len(big) == 16
     i_sum = sum(a for _, a in big)
@@ -121,6 +121,41 @@ def check_sizes():
     # The same credential with a 4,096-byte offer inline instead of offer_id.
     inline = len(c) - len(r.tlv([(12, bytes(32))])) + len(r.tlv([(2, bytes(4096))]))
     assert inline == 8243 and inline <= 9216
+
+    # That example is not the largest: 16 two-byte amounts and a 64-byte quote ID are.
+    # 256, 512, ..., 16,384 once each and nine more 256-sat notes, on keyset B.
+    top = [("B", 2 ** i) for i in range(8, 15)] + [("B", 256)] * 9
+    assert len(top) == 16 and all(256 <= a <= 32768 for _, a in top)
+    assert sum(a for _, a in top) == 32512 + 9 * 256 == 34816
+    for f in (1, 30719):  # any quote of 1 to 30,719 sat
+        v = value(top, f)
+        assert 34817 <= v <= 65535 and ladder_outputs(v) == 16
+    assert value(top, 30720) == 65536  # one more sat needs a 17th output
+    tb = body(top, 16, fund=b"q" * 64)
+    tw = witness(16, True)
+    tc = credential(tb, tw, attest=False)
+    assert len(tb) == 2974 + 8 + 28 == 3010
+    assert (len(tw), len(tc), b64u_len(len(tc))) == (1094, 4213, 5618)
+    t_inline = len(tc) - 34 + 4100
+    assert t_inline == 8279 <= 9216
+    assert len(tc) > len(c)  # 4,177 bytes is one example, not the maximum
+    # Nothing at the defaults is larger. A complete ladder of 16 outputs holds amounts of at most
+    # 2^(i-1) (6.3), so the canonical one is the longest output list; dropping the fund costs
+    # 66 + 66 = 132 bytes and dropping an input 109 + 64 = 173, more than eight-byte amounts on
+    # every input could add back (16 x 6 = 96, or 15 x 6 = 90).
+    assert len(r.tlv([(4, b"q" * 64)])) + len(r.tlv([(2, SIG)])) == 132 > 16 * 6
+    assert 109 + 64 > 15 * 6
+    # A three-byte input amount gains a byte only beside fifteen two-byte ones, I >= 69,376,
+    # and with F >= 1 that stays under the 65,535 cap only if the fee is at least 3,842 sat,
+    # more than 240 sat per input: input_fee_ppk summing past 3,841,000.
+    i_min = 65536 + 15 * 256
+    assert i_min == 69376 and i_min + 1 - 65535 == 3842
+    assert (16 * 240062 + 999) // 1000 == 3841 and (16 * 240063 + 999) // 1000 == 3842
+    FEE_PPK["X"] = 240063  # a keyset with such a fee, for this check only
+    heavy = [("X", 65536)] + [("X", 256)] * 15
+    assert value(heavy, 1) == 65535
+    assert len(credential(body(heavy, 16, fund=b"q" * 64), tw, attest=False)) == 4214
+    del FEE_PPK["X"]
 
     # The 10.3 price, 1,680 sat, needs the verified Web Bot Auth discount: with the attest record.
     attest_rec = len(r.tlv([(6, r.entry_list([r.tlv([(0, b"httpsig:web-bot-auth"), (2, WBA_BODY)])]))]))
