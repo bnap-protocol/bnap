@@ -441,16 +441,17 @@ class Ctx:
         return out.stdout.strip()
 
     def dpop_credential(self, req, raw, o, *, key=None, omit_ctx=False, context_for=None, jti=None,
-                        by_reference=False, extra=(), binding=None):
-        """An attestation-only credential: one DPoP proof, no pay."""
+                        by_reference=False, extra=(), binding=None, ext=None):
+        """An attestation-only credential: one DPoP proof, no pay. ext goes into the Context (5.2)."""
         key = key or self.dpop_key()
         act = (context_for or req).action_scope()
-        ctx = cr.context(o.offer_id, act, None, [DPOP], None)
+        ctx = cr.context(o.offer_id, act, None, [DPOP], ext)
         tok = self.dpop_token(key)
         body = dpop.make_body(key, method=req.method, htu=req.htu(), iat=self.now(), jti=jti or b64u(os.urandom(12)),
                               context=ctx, access_token=tok, omit_ctx=omit_ctx)
         cred = cr.build_credential(offer=None if by_reference else raw, offer_id=o.offer_id if by_reference else None,
-                                   attest=[cr.SchemeItem(DPOP, body, None)], extra=list(extra), binding=binding)
+                                   attest=[cr.SchemeItem(DPOP, body, None)], extra=list(extra), binding=binding,
+                                   ext=ext)
         dg = cr.digest(ctx, binding, b"", [body])
         return cred, ctx, dg
 
@@ -1291,6 +1292,28 @@ def att_empty_forms(ctx):
     check(not r1.replayed, "first send flagged replayed")
     r2 = expect_admitted(ctx.request(p.req, credential=cred, label="no ext"))
     check(r2.replayed, "absent and empty ext gave different Contexts or ReplayKeys")
+
+
+@case("ATT-EXT-BOUND", "5.2", "MUST", "the Context covers ext: a non-empty ext is admitted under H(ext) and the "
+      "receipt names that Digest; the same body with an altered ext is refused", profiles=WITH_CREDENTIALS)
+def att_ext_bound(ctx):
+    p, raw, o = admitted_dpop(ctx)
+    ext = codec.tlv([(1, b"bnap-conformance")])  # one odd-typed extension, which the gate ignores
+    cred, c, dg = ctx.dpop_credential(p.req, raw, o, ext=ext)
+    try:
+        r = expect_admitted(ctx.request(p.req, credential=cred, label="non-empty ext"))
+    except Fail as e:
+        raise Fail(f"{e}; a DPoP proof over the Context with H(ext) did not count, so the gate leaves ext out "
+                   "of its Context or refuses an odd extension it must ignore") from None
+    check(r.status == rs.OK and not r.replayed, f"first send settled {r.status_name}, replayed={r.replayed}")
+    check(r.digest == dg, "the receipt digest is not the Digest over a Context with H(ext): the gate left ext out")
+    item = cr.parse_credential(cred).attest
+    altered = cr.build_credential(offer=raw, attest=item, ext=codec.tlv([(1, b"bnap-conformancE")]))
+    try:
+        expect_not_admitted(ctx.request(p.req, credential=altered, label="ext altered on the path"))
+    except Fail as e:
+        raise Fail(f"{e}: the same body with an altered ext was admitted, so ext is not bound by the Context") \
+            from None
 
 
 @case("ATT-BODY-ONLY", "5.1", "MUST", "an adapter reads what it verifies from the body, never from request fields",

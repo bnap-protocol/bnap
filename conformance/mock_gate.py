@@ -24,6 +24,7 @@ Faults:
                         admission, and must say so instead of passing)
   quote-expires-over    exact-scope pay entries carry quote_expires after expires
   native-in-route       route-scope offers carry a native record
+  ext-ignored           the gate leaves ext out of the Context (5.2)
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -52,7 +53,7 @@ from bnap_conf.codec import BnapError, b64u, b64u_decode  # noqa: E402
 from bnap_conf.crypto import schnorr_pub, key_from_label  # noqa: E402
 
 FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "bad-ack", "no-dpop",
-          "quote-expires-over", "native-in-route")
+          "quote-expires-over", "native-in-route", "ext-ignored")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -368,7 +369,11 @@ class MockGate:
                                     attest_schemes=c.attest_schemes)
         except BnapError as e:
             raise GateError(e.code, e.reason) from None
-        ctx, dg = cr.credential_envelope(c, o.offer_id, act)
+        if "ext-ignored" in self.faults:
+            ctx = cr.context(o.offer_id, act, c.pay.scheme if c.pay else None, c.attest_schemes, None)
+            dg = cr.digest(ctx, c.binding, c.pay_body, c.attest_bodies)
+        else:
+            ctx, dg = cr.credential_envelope(c, o.offer_id, act)
         sent_ctx = [v for k, v in headers if k.lower() == "bnap-context"]
         if sent_ctx:
             try:
@@ -611,6 +616,7 @@ FAULT_CASES = {
     "bad-ack": "RCPT-ACK",
     "quote-expires-over": "OFR-PARSE",
     "native-in-route": "OFR-ROUTE-CLASSES",
+    "ext-ignored": "ATT-EXT-BOUND",
 }
 
 # Fault sets under which no admission is reachable without a payer: the runner
