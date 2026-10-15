@@ -1,0 +1,28 @@
+name: Feature or registry request
+description: Propose a protocol feature, a new scheme, rail, verifier or carrier, or a suite improvement.
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What cannot be done with the current text, and who needs it.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The change you suggest. For a registry entry, link its public specification and say what properties it guarantees.
+    validations:
+      required: true
+  - type: textarea
+    id: compat
+    attributes:
+      label: Compatibility and security
+      description: What existing deployments would notice, and the security effects.
+  - type: input
+    id: spec
+    attributes:
+      label: Spec reference
+      description: The sections, ERRATA or DECISIONS rows, or roadmap item this relates to.

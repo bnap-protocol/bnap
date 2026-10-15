@@ -1,0 +1,46 @@
+name: Bug report
+description: A defect in the text, the vectors, the reference encoder, the registry or the conformance suite.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go through private vulnerability reporting, not here (see SECURITY.md).
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Spec text (socket-draft-00 or a scheme draft)
+        - Test vectors or reference encoder
+        - Registry or validator
+        - Conformance suite
+        - IETF draft or NUT proposals
+        - Book or other docs
+    validations:
+      required: true
+  - type: input
+    id: where
+    attributes:
+      label: Where
+      description: File and section, row or case ID, for example "socket-draft-00 4.4 step 3" or "OFR-NATIVE-MATCH".
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What is wrong
+      description: What the text or code says, and why it is wrong or inconsistent.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: Commands, inputs or the conflicting passages.
+      render: shell
+  - type: input
+    id: commit
+    attributes:
+      label: Commit
+      description: The output of `git rev-parse --short HEAD`.
