@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security problem in the protocol
+    url: https://github.com/bnap-protocol/bnap/security/advisories/new
+    about: Please report vulnerabilities privately through GitHub private vulnerability reporting, never in a public issue. See SECURITY.md.
+  - name: Bug in Caparra, the Rust implementation
+    url: https://github.com/bnap-protocol/caparra/issues/new/choose
+    about: Problems with the gate, wallet, CLI or MCP server belong in the caparra repository.
