@@ -86,8 +86,8 @@ verifiers = ["local", "mpp-processor"]
 body = "the MPP credential, the Authorization: Payment value as received"
 witness = "none: class O has no witness"
 native = [
-  { kind = "mpp-challenge", embeds = "the challenge's HMAC'd id carries the OfferID", credential = "the MPP credential, the Authorization: Payment value as received" },
-  { kind = "bolt11", embeds = "the invoice description hash is the OfferID", credential = "the MPP credential, the Authorization: Payment value as received" },
+  { kind = "mpp-challenge", embeds = "the entry is the Payment challenge exactly as sent in WWW-Authenticate; its opaque parameter carries the OfferID (base64url of the JCS object {\"bnap_offer\": hex OfferID}), and the challenge's HMAC'd id covers opaque, so the gate authenticates it without state (ERRATA row 35)", credential = "the MPP credential, the Authorization: Payment value as received" },
+  { kind = "bolt11", embeds = "optional for MPP, since the invoice is already inside the challenge (methodDetails.invoice); when sent, the invoice description hash is the OfferID", credential = "the MPP credential, the Authorization: Payment value as received" },
 ]
 units = ["sat"]
 conformance = ""
