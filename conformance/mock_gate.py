@@ -46,6 +46,10 @@ Faults:
                         proof with s replaced by n - s verifies under another ReplayKey
   cache-control-kept    the gate adds Cache-Control: private, no-store only when the application sent no
                         Cache-Control at all, so the cache route's "public, max-age=60" goes out unchanged
+  mpp-opaque-wrong      the MPP challenge's opaque carries another OfferID (still covered by the HMAC id),
+                        so the mpp-challenge entry does not embed the offer's OfferID
+  mpp-header-differs    the MPP challenge sent in WWW-Authenticate gains a description parameter after the
+                        mpp-challenge entry was signed, so the two differ
 
 The mock is not a gate to deploy. It has no durability, no TLS, no rate
 limits on unauthenticated work, and it verifies L402, MPP and DPoP only in
@@ -77,7 +81,8 @@ FAULTS = ("strip-attest", "status-flip", "no-replay", "wrong-scope-accepted", "b
           "quote-expires-over", "native-in-route", "ext-ignored", "reusable-window", "late-expiry",
           "nonce-reuse", "no-receipt-on-failed", "nested-odd-rejected", "nested-odd-in-rk", "nested-even-ignored",
           "ext-even-ignored", "offer-size-unchecked", "htu-from-host", "scope-from-host", "top-odd-in-digest",
-          "scope-before-expiry", "offer-version-masked", "high-s-accepted", "cache-control-kept")
+          "scope-before-expiry", "offer-version-masked", "high-s-accepted", "cache-control-kept",
+          "mpp-opaque-wrong", "mpp-header-differs")
 REG = registry.default()
 WAIVE = {"scheme": "httpauth:DPoP", "effect": "waive"}
 
@@ -290,11 +295,14 @@ class MockGate:
                                        "methodDetails": {"invoice": invoice, "network": "regtest",
                                                          "paymentHash": ph.hex()}},
                                       separators=(",", ":"), sort_keys=True).encode())
+                carried = os.urandom(32) if "mpp-opaque-wrong" in self.faults else oid
                 params = {"realm": self.origin, "method": "lightning", "intent": "charge", "request": req,
-                          "opaque": ln.mpp_opaque(oid)}
+                          "opaque": ln.mpp_opaque(carried)}
                 params = {"id": self._mpp_id(params), **params}
                 header = ln.mpp_challenge_header(params)
                 natives += [of.native_entry(i, "mpp-challenge", header.encode())]
+                if "mpp-header-differs" in self.faults:
+                    header = ln.mpp_challenge_header({**params, "description": "paid action"})
                 challenges.append(("WWW-Authenticate", header))
         fields = base + ([(of.NATIVE, codec.entry_list(natives))] if natives else [])
         raw = of.sign_offer(fields, self.offer_sk, self.mac_key)
@@ -800,6 +808,8 @@ FAULT_CASES = {
     "offer-version-masked": "ERR-OFFER-VERSION",
     "high-s-accepted": "ATT-CANONICAL-BODY",
     "cache-control-kept": "ERR-CACHE-CONTROL",
+    "mpp-opaque-wrong": "OFR-NATIVE-EMBED",
+    "mpp-header-differs": "OFR-NATIVE-MATCH",
 }
 
 # Faults that must also be caught when the runner is given no --role at all.
@@ -866,10 +876,13 @@ def selftest(report=None, with_payer=False, max_wait=None):
         else:
             hit = [r for r in res.results if r.case.id == want]
             caught = bool(hit) and hit[0].status == "fail"
+            # A SHOULD failure is reported but does not make the target
+            # non-conformant, so it leaves the exit status alone.
+            should = bool(hit) and hit[0].case.level == "SHOULD"
             others = sorted(r.case.id for r in res.results if r.status == "fail" and r.case.id != want)
-            rows.append((name, want, ("caught" if caught else "MISSED")
+            rows.append((name, want, ("caught" if caught else "MISSED") + (" (SHOULD)" if caught and should else "")
                          + (f" (also: {', '.join(others)})" if others else "")))
-            ok &= caught and res.exit_status() == runner.EXIT_FAIL
+            ok &= caught and (should or res.exit_status() == runner.EXIT_FAIL)
     return ok, rows, results
 
 

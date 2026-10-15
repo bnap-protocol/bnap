@@ -15,7 +15,8 @@ Nothing has been released. What exists on `develop`:
   rev 39), and `spec/overview-v0.5.md`, the design overview v0.5.1.
 - `spec/schemes/bnap-notes-draft-00.md`, the `bnap:notes` scheme in
   draft-00 terms, next to the superseded v0.4 profile.
-- `spec/ERRATA.md` (34 rows) and `spec/DECISIONS.md` (8 provisional
+- `spec/ERRATA.md` (35 rows; row 35: the MPP OfferID goes in `opaque`
+  under the HMAC'd `id`, and a `bolt11` entry is optional for MPP) and `spec/DECISIONS.md` (8 provisional
   decisions awaiting owner review).
 - The v0.2 and v0.3 archives under `spec/history/`.
 - `reference/python/bnap_ref.py`, the standard-library reference encoder,
@@ -25,7 +26,9 @@ Nothing has been released. What exists on `develop`:
   `registry/generated/registry.json`. Every entry is provisional.
 - `conformance/`: a client library, 535 generated cases in
   `vectors/cases/`, the black-box runner `run.py` with client, server and
-  gateway profiles, a mock gate with injectable faults, an lnd payer
+  gateway profiles, a mock gate with injectable faults (among them
+  `mpp-opaque-wrong` and `mpp-header-differs`, caught by
+  `OFR-NATIVE-EMBED` and `OFR-NATIVE-MATCH`), an lnd payer
   wrapper, and a coverage map of every BCP 14 sentence of draft-00.
 - `ietf/`: the Internet-Draft `draft-bnap-socket`, generated from
   draft-00.

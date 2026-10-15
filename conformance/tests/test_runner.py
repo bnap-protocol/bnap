@@ -72,8 +72,13 @@ class MutationSelfCheck(unittest.TestCase):
                 rr = self.results[fault]
                 r = [x for x in rr.results if x.case.id == case_id][0]
                 self.assertEqual(r.status, "fail", f"{case_id} under {fault}: {r.status} {r.detail}")
-                self.assertEqual(rr.exit_status(), run.EXIT_FAIL)
-                self.assertEqual(rr.verdict(), "not conformant")
+                if r.case.level == "SHOULD":
+                    # Reported, but a SHOULD failure alone keeps the target conformant.
+                    self.assertGreaterEqual(rr.summary()["should_fail"], 1)
+                    self.assertNotEqual(rr.verdict(), "not conformant")
+                else:
+                    self.assertEqual(rr.exit_status(), run.EXIT_FAIL)
+                    self.assertEqual(rr.verdict(), "not conformant")
         for fault in mock_gate.NO_ROLE_FAULTS:
             with self.subTest(fault=fault, roles=False):
                 case_id = mock_gate.FAULT_CASES[fault]
