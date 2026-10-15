@@ -244,6 +244,12 @@ class MockGate:
             self.route_offers[route["id"]] = (raw, now + ttl)
             return raw
 
+    def _mpp_id(self, params):
+        """The challenge id: an HMAC over the bound parameters (draft-httpauth-payment-01)."""
+        bound = "|".join(params.get(k, "") for k in ("realm", "method", "intent", "request", "expires",
+                                                     "digest", "opaque"))
+        return b64u(hmac.new(self.mpp_key, bound.encode(), hashlib.sha256).digest())
+
     def exact_offer(self, route, scope, headers, now):
         """An exact-scope offer, with natives for its class O entries, and the native challenges."""
         unit, amount = next(iter(route["price"].items()))
@@ -280,15 +286,16 @@ class MockGate:
                 challenges.append(("WWW-Authenticate", 'L402 macaroon="%s", invoice="%s"'
                                    % (base64.b64encode(mac).decode(), invoice)))
             elif s == "payment:lightning/charge":
-                tag = hmac.new(self.mpp_key, oid + ph, hashlib.sha256).digest()[:16]
-                req = b64u(json.dumps({"amount": str(amount), "currency": "sat", "invoice": invoice},
+                req = b64u(json.dumps({"amount": str(amount), "currency": "sat",
+                                       "methodDetails": {"invoice": invoice, "network": "regtest",
+                                                         "paymentHash": ph.hex()}},
                                       separators=(",", ":"), sort_keys=True).encode())
-                params = {"id": ln.mpp_id(oid, tag), "realm": self.origin, "method": "lightning",
-                          "intent": "charge", "request": req}
-                natives += [of.native_entry(i, "mpp-challenge", ln.mpp_challenge_json(params)),
-                            of.native_entry(i, "bolt11", invoice.encode())]
-                challenges.append(("WWW-Authenticate", "Payment " + ", ".join(
-                    '%s="%s"' % (k, v) for k, v in sorted(params.items()))))
+                params = {"realm": self.origin, "method": "lightning", "intent": "charge", "request": req,
+                          "opaque": ln.mpp_opaque(oid)}
+                params = {"id": self._mpp_id(params), **params}
+                header = ln.mpp_challenge_header(params)
+                natives += [of.native_entry(i, "mpp-challenge", header.encode())]
+                challenges.append(("WWW-Authenticate", header))
         fields = base + ([(of.NATIVE, codec.entry_list(natives))] if natives else [])
         raw = of.sign_offer(fields, self.offer_sk, self.mac_key)
         if natives:
@@ -530,12 +537,11 @@ class MockGate:
                 params, pre = ln.parse_mpp_credential(body.decode())
                 inv = ln.decode_bolt11(ln.mpp_request_invoice(params))
                 ph = inv.payment_hash
-                oid = ln.mpp_offer_id(params["id"])
-                tag = b64u_decode(params["id"])[32:]
+                oid = ln.mpp_offer_id(params)
+                bound = hmac.compare_digest(params["id"], self._mpp_id(params))
             except Exception:
                 raise GateError("BAD_CREDENTIAL", "MPP credential", "payment:lightning/charge/MALFORMED") from None
-            if oid != o.offer_id or not hmac.compare_digest(
-                    tag, hmac.new(self.mpp_key, oid + ph, hashlib.sha256).digest()[:16]):
+            if oid != o.offer_id or not bound:
                 raise GateError("BAD_CREDENTIAL", "challenge id", "payment:lightning/charge/BAD_ID")
         else:
             raise GateError("BAD_CREDENTIAL", "scheme not supported by the mock", item.scheme + "/UNSUPPORTED")
@@ -555,7 +561,7 @@ class MockGate:
                 oid = bytes.fromhex(ln.parse_macaroon(mac).caveat_value("bnap_offer") or "")
             else:
                 params, _ = ln.parse_mpp_credential(token)
-                oid = ln.mpp_offer_id(params["id"])
+                oid = ln.mpp_offer_id(params)
         except Exception:
             raise GateError("BAD_CREDENTIAL", "native credential", scheme + "/MALFORMED") from None
         state = of.GateOfferState([self.mac_key], [schnorr_pub(self.offer_sk)], self.cache)
