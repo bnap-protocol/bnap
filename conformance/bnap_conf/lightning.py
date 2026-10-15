@@ -6,10 +6,18 @@ names for each native kind:
   l402-macaroon  a first-party caveat bnap_offer=<hex OfferID>
   mpp-challenge  the challenge's HMAC'd id carries the OfferID
 
-The MPP shapes here are the suite's profile "bnap-conf-mpp-1" (see
-notes/n11-conformance.md): native entry data is the challenge as canonical
-JSON; the credential is b64u(JSON {"challenge", "payload": {"preimage"}});
-the id is b64u(OfferID || 16-byte tag).
+Native entry data is the artifact's bytes (draft-00 4.1), one entry per
+registered kind: an L402 pay entry has an l402-macaroon entry (the binary V2
+macaroon) and a bolt11 entry (the invoice string); a payment:lightning/charge
+entry has an mpp-challenge entry, the Payment challenge exactly as the gate
+sends it in WWW-Authenticate (draft-httpauth-payment-01 auth-params).
+
+The MPP shapes are the suite's profile "bnap-conf-mpp-2" (see
+notes/e2e-conformance.md): the challenge's opaque parameter is
+b64u(JCS {"bnap_offer": hex(OfferID)}), which the HMAC'd id covers; the
+request is b64u(JSON) with the invoice at methodDetails.invoice (the
+lightning charge method) or at invoice; the credential is
+b64u(JCS {"challenge": the challenge's parameters, "payload": {"preimage"}}).
 
 decode_bolt11 is strict, because run.py caps its spending against this
 decode while the payer parses the invoice on its own: any reading the two
@@ -403,25 +411,41 @@ def parse_l402_token(token):
 # ---------------------------------------------------------------- MPP profile
 
 
-def mpp_id(offer_id, tag16):
-    return b64u(offer_id + tag16)
+def mpp_opaque(offer_id):
+    """The opaque parameter that carries the OfferID."""
+    return b64u(json.dumps({"bnap_offer": offer_id.hex()}, separators=(",", ":"), sort_keys=True).encode())
 
 
-def mpp_offer_id(id_str):
+def mpp_offer_id(params):
+    """The OfferID a challenge's opaque parameter carries, or None."""
     try:
-        b = b64u_decode(id_str)
+        v = json.loads(b64u_decode(params["opaque"]))
+        b = bytes.fromhex(v["bnap_offer"])
     except Exception:
         return None
-    return b[:32] if len(b) >= 32 else None
+    return b if len(b) == 32 else None
 
 
-def mpp_challenge_json(params):
-    return json.dumps(params, separators=(",", ":"), sort_keys=True).encode()
+def mpp_challenge_header(params):
+    """A Payment challenge as a WWW-Authenticate value, parameters in order."""
+    return "Payment " + ", ".join('%s="%s"' % (k, v) for k, v in params.items())
+
+
+def mpp_challenge_params(data):
+    """The parameters of the one Payment challenge an mpp-challenge entry holds."""
+    from .http import parse_challenges
+    chs = parse_challenges(data.decode("ascii"))
+    if len(chs) != 1 or chs[0].scheme != "Payment" or chs[0].raw != data.decode("ascii"):
+        raise ValueError("an mpp-challenge entry is not one Payment challenge")
+    return chs[0].params
 
 
 def mpp_request_invoice(params):
     try:
         req = json.loads(b64u_decode(params["request"]))
+        details = req.get("methodDetails")
+        if isinstance(details, dict) and "invoice" in details:
+            return details["invoice"]
         return req.get("invoice")
     except Exception:
         return None

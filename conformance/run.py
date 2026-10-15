@@ -918,8 +918,11 @@ def ofr_native_embed(ctx):
                 m = ln.parse_macaroon(n.data)
                 check(m.caveat_value("bnap_offer") == o.offer_id.hex(), "macaroon has no bnap_offer = OfferID caveat")
             elif n.kind == "mpp-challenge":
-                params = json.loads(n.data)
-                check(ln.mpp_offer_id(params.get("id", "")) == o.offer_id, "MPP id does not carry the OfferID")
+                try:
+                    params = ln.mpp_challenge_params(n.data)
+                except (ValueError, UnicodeDecodeError) as e:
+                    raise Fail(f"the mpp-challenge native is not one Payment challenge: {e}") from None
+                check(ln.mpp_offer_id(params) == o.offer_id, "the MPP challenge's opaque does not carry the OfferID")
     each_offer(ctx, f)
     if not seen:
         raise Skip("no native records offered")
@@ -941,7 +944,7 @@ def ofr_native_match(ctx):
                     mac = b""
                 ok = mac in datas and (ch.params.get("invoice", "").encode() in datas)
             elif ch.scheme == "Payment":
-                ok = ln.mpp_challenge_json(ch.params) in datas
+                ok = ch.raw.encode() in datas
             else:
                 continue
             if not ok:
@@ -1943,7 +1946,7 @@ def pay_two_schemes(ctx):
         if idx is not None else None
     if chal is None:
         raise Skip("the L402 offer has no payment:lightning/charge entry with an MPP challenge")
-    params = json.loads(chal)
+    params = ln.mpp_challenge_params(chal)
     if ln.mpp_request_invoice(params) != inv:
         raise Skip("the MPP challenge names another invoice, so one payment cannot reach both schemes")
     cred = cr.build_credential(offer=raw, pay=cr.SchemeItem("payment:lightning/charge",
@@ -1962,7 +1965,7 @@ def pay_mpp(ctx):
                          and n.kind == "mpp-challenge"), None)
             if chal is None:
                 continue
-            params = json.loads(chal)
+            params = ln.mpp_challenge_params(chal)
             pre = ctx.pay(ln.mpp_request_invoice(params), o.pay[idx])
             cred = cr.build_credential(offer=raw, pay=cr.SchemeItem("payment:lightning/charge",
                                                                     ln.mpp_credential(params, pre).encode(), None))
